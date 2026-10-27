@@ -29,6 +29,32 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "pending_change_request" not in st.session_state:
     st.session_state.pending_change_request = None
+if "queued_prompt" not in st.session_state:
+    st.session_state.queued_prompt = None
+
+# Dark, card-based styling (inspired by the Resolvo mock-up)
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"] { background:#1a1a1a; border-right:1px solid #2a2a2a; }
+    .brand { font-size:1.6rem; font-weight:700; margin:0; }
+    .brand-sub { color:#8a8a8a; font-size:.8rem; margin-bottom:1rem; }
+    .hero { text-align:center; padding:3rem 0 1.5rem; }
+    .hero .logo { width:72px; height:72px; margin:0 auto 1rem; border-radius:20px;
+        background:linear-gradient(135deg,#0b3d91,#1d6bff); display:flex;
+        align-items:center; justify-content:center; font-size:2rem; }
+    .hero .hello { color:#8a8a8a; font-size:.9rem; }
+    .hero h1 { font-size:2.4rem; font-weight:500; margin:.3rem 0 0; }
+    div.stButton > button { background:#212121; border:1px solid #2f2f2f;
+        border-radius:12px; color:#e8e8e8; text-align:left; }
+    div.stButton > button:hover { border-color:#1d6bff; color:#fff; }
+    div.stButton > button[kind="primary"] { background:#1d6bff; border-color:#1d6bff; }
+    [data-testid="stChatInput"] { border-radius:16px; }
+    [data-testid="stVerticalBlockBorderWrapper"] { background:#1e1e1e; border-radius:14px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # Helper API caller
@@ -45,19 +71,20 @@ def api_request(method: str, path: str, json_data: dict = None):
         return 500, {"error": f"Cannot connect to FastAPI backend at {API_BASE_URL}. Is it running? Details: {str(e)}"}
 
 
-# Sidebar: Customer Profile & Backend Status
+# Sidebar: brand, navigation, session & backend status
 with st.sidebar:
-    st.title("🤖 Team Logic")
-    st.caption("Autonomous Customer Support Demo")
+    st.markdown('<p class="brand">Team Logic</p><p class="brand-sub">AI-Powered Support</p>', unsafe_allow_html=True)
+
+    page = st.radio("Navigate", ["💬 Ask Agent", "📦 Orders", "🛡️ Audit Log"], label_visibility="collapsed")
+
     st.markdown("---")
-    
-    st.subheader("Customer Session")
-    st.write(f"👤 **Customer:** Alice Smith")
-    st.write(f"📧 **Email:** `{st.session_state.customer_email}`")
-    st.write(f"🔑 **Token:** `{st.session_state.token}`")
-    
+    st.caption("CUSTOMER SESSION")
+    st.write("👤 Alice Smith")
+    st.write(f"📧 `{st.session_state.customer_email}`")
+    st.write(f"🔑 `{st.session_state.token}`")
+
     st.markdown("---")
-    st.subheader("Backend Status")
+    st.caption("BACKEND STATUS")
     status_code, health = api_request("GET", "/health")
     if status_code == 200:
         st.success(f"FastAPI Online (v{health.get('version', '1.0')})")
@@ -65,26 +92,37 @@ with st.sidebar:
         st.warning("FastAPI Offline. Start backend with `uvicorn main:app --reload`")
 
     st.markdown("---")
-    st.markdown(
-        """
-        **Sample prompts to test:**
-        - `Change shipping address for order 10023 to 12 MG Road, Pune`
-        - `Cancel order 10023`
-        - `Track order 10023`
-        - `Change shipping address for order 10024 to 55 Lake Road` *(blocked: already shipped)*
-        """
-    )
+    if st.button("🗑️ Clear Conversation", use_container_width=True):
+        st.session_state.chat_history = []
+        st.session_state.pending_change_request = None
+        st.rerun()
 
-
-# Main Tabs
-tab_chat, tab_orders, tab_audit = st.tabs(["💬 Chat & Guardrails", "📦 Orders", "🛡️ Audit Log"])
 
 # ============================================================================
-# TAB 1: Chat & Guardrails
+# PAGE 1: Chat & Guardrails
 # ============================================================================
-with tab_chat:
-    st.header("Conversational Order Support")
-    st.write("Ask to change address, track, or cancel orders. The AI will preview changes and seek confirmation.")
+SUGGESTIONS = [
+    ("📍", "Change Address", "Change shipping address for order 10023 to 12 MG Road, Pune"),
+    ("🚚", "Track Order", "Track order 10023"),
+    ("❌", "Cancel Order", "Cancel order 10023"),
+    ("🛡️", "Try a Blocked Change", "Change shipping address for order 10024 to 55 Lake Road"),
+]
+
+if page == "💬 Ask Agent":
+    # Welcome hero + suggestion cards, shown only on an empty conversation
+    if not st.session_state.chat_history and not st.session_state.pending_change_request:
+        st.markdown(
+            '<div class="hero"><div class="logo">✦</div>'
+            '<div class="hello">Hello! Alice Smith</div>'
+            '<h1>How can I help you today?</h1></div>',
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(len(SUGGESTIONS))
+        for col, (icon, title, prompt) in zip(cols, SUGGESTIONS):
+            with col:
+                if st.button(f"{icon}\n\n{title}", key=f"sug_{title}", use_container_width=True):
+                    st.session_state.queued_prompt = prompt
+                    st.rerun()
 
     # Render Chat History
     for chat in st.session_state.chat_history:
@@ -137,7 +175,9 @@ with tab_chat:
                 st.rerun()
 
     # User Input
-    user_input = st.chat_input("Type your order request (e.g., 'Change shipping address for order 10023 to 12 MG Road, Pune')...")
+    user_input = st.chat_input("Enter your request") or st.session_state.queued_prompt
+    st.session_state.queued_prompt = None
+    st.caption("The agent can make mistakes. Changes always need your confirmation.")
     if user_input:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -166,9 +206,9 @@ with tab_chat:
 
 
 # ============================================================================
-# TAB 2: Orders
+# PAGE 2: Orders
 # ============================================================================
-with tab_orders:
+elif page == "📦 Orders":
     st.header("Your Orders")
     st.caption("Live customer orders fetched from the database")
     
@@ -211,9 +251,9 @@ with tab_orders:
 
 
 # ============================================================================
-# TAB 3: Audit Log
+# PAGE 3: Audit Log
 # ============================================================================
-with tab_audit:
+else:
     st.header("Security & Compliance Audit Log")
     st.caption("Append-only audit trail with masked PII and rule evaluation")
     
