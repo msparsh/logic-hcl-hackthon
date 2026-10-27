@@ -1,6 +1,6 @@
 # Agent guidance
 
-Build a small, working MVP that solves one real finance problem with AI. Keep the code simple, so every team member can explain it.
+Build a small, working MVP. Keep the code simple, so every team member can explain it.
 
 ## Project
 - Goal: a working MVP. Judges check that data, backend and frontend connect, and may ask us to change code live. They will check everything.
