@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 
 from fastapi import FastAPI, Depends, Header, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -483,6 +484,271 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", response_class=HTMLResponse, tags=["Demo Web UI"])
+def demo_web_interface():
+    """Serves a modern single-page web UI for testing the agent in any browser."""
+    html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Team Logic - Autonomous Support Agent Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center shadow">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xl">🤖</div>
+      <div>
+        <h1 class="text-lg font-bold">Team Logic — Autonomous Customer Support</h1>
+        <p class="text-xs text-slate-400">FastAPI + Guardrails + Verified Confirmations</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-4 text-xs">
+      <span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-3 py-1 rounded-full">● Backend Online</span>
+      <span class="bg-slate-700 text-slate-300 px-3 py-1 rounded-full">👤 Alice Smith (cust_1)</span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <div class="bg-slate-800/60 border-b border-slate-700/80 px-6 py-2 flex space-x-4 text-sm font-medium">
+    <button onclick="switchTab('chat')" id="tab-btn-chat" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold transition">💬 Chat & Agent</button>
+    <button onclick="switchTab('orders')" id="tab-btn-orders" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">📦 Orders</button>
+    <button onclick="switchTab('audit')" id="tab-btn-audit" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">🛡️ Audit Log</button>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-6 flex flex-col">
+    
+    <!-- CHAT VIEW -->
+    <div id="view-chat" class="flex flex-col flex-1 space-y-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex-1 flex flex-col justify-between overflow-hidden shadow">
+        <div id="chat-messages" class="overflow-y-auto space-y-3 p-2 max-h-[55vh]">
+          <div class="bg-slate-700/50 border border-slate-600/50 p-3 rounded-lg max-w-xl text-sm">
+            <p class="font-semibold text-blue-400 mb-1">🤖 Agent:</p>
+            <p>Hello Alice! I can help you update your delivery address, check your order status, or cancel open orders before shipment. How can I help you today?</p>
+          </div>
+        </div>
+
+        <!-- Preview Modal / Card -->
+        <div id="preview-box" class="hidden my-3 p-4 bg-amber-950/40 border border-amber-600/70 rounded-xl">
+          <div class="flex items-start justify-between">
+            <div>
+              <span class="text-xs font-bold tracking-wider uppercase text-amber-400 bg-amber-900/50 px-2 py-0.5 rounded">Action Confirmation Required</span>
+              <h3 id="preview-title" class="font-bold text-slate-100 mt-2">Proposed Change</h3>
+              <p id="preview-body" class="text-sm text-slate-300 mt-1 whitespace-pre-line"></p>
+            </div>
+            <span class="text-xs text-slate-400">Valid for 5 min</span>
+          </div>
+          <div class="mt-4 flex space-x-3">
+            <button onclick="submitConfirmation('confirm')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition">✅ Confirm & Apply</button>
+            <button onclick="submitConfirmation('cancel')" class="bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">❌ Decline Change</button>
+          </div>
+        </div>
+
+        <!-- Input Box -->
+        <div class="mt-4 pt-3 border-t border-slate-700 flex space-x-3">
+          <input id="chat-input" type="text" placeholder="e.g. Change shipping address for order 10023 to 12 MG Road, Pune" 
+                 class="flex-1 bg-slate-900 border border-slate-600 text-slate-100 px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:border-blue-500" 
+                 onkeypress="if(event.key === 'Enter') sendChatMessage()">
+          <button onclick="sendChatMessage()" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition">Send</button>
+        </div>
+      </div>
+
+      <!-- Quick prompts -->
+      <div class="flex flex-wrap gap-2 text-xs text-slate-400 items-center">
+        <span>Try prompts:</span>
+        <button onclick="usePrompt('Change shipping address for order 10023 to 12 MG Road, Pune')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded">Change address (10023)</button>
+        <button onclick="usePrompt('Cancel order 10023')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded">Cancel order (10023)</button>
+        <button onclick="usePrompt('Track order 10023')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded">Track order (10023)</button>
+        <button onclick="usePrompt('Change shipping address for order 10024 to 99 Hill Road')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1 rounded">Test Blocked Status (10024)</button>
+      </div>
+    </div>
+
+    <!-- ORDERS VIEW -->
+    <div id="view-orders" class="hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold">Your Orders</h2>
+        <button onclick="loadOrders()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded">🔄 Refresh</button>
+      </div>
+      <div id="orders-list" class="space-y-3">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- AUDIT VIEW -->
+    <div id="view-audit" class="hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold">Security & Audit Logs</h2>
+        <button onclick="loadAudit()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded">🔄 Refresh</button>
+      </div>
+      <div id="audit-list" class="space-y-3">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let activePendingRequest = null;
+
+    function switchTab(tab) {
+      document.getElementById('view-chat').classList.add('hidden');
+      document.getElementById('view-orders').classList.add('hidden');
+      document.getElementById('view-audit').classList.add('hidden');
+      document.getElementById('tab-btn-chat').className = 'px-4 py-2 rounded-lg text-slate-400 hover:text-white transition';
+      document.getElementById('tab-btn-orders').className = 'px-4 py-2 rounded-lg text-slate-400 hover:text-white transition';
+      document.getElementById('tab-btn-audit').className = 'px-4 py-2 rounded-lg text-slate-400 hover:text-white transition';
+
+      document.getElementById('view-' + tab).classList.remove('hidden');
+      document.getElementById('tab-btn-' + tab).className = 'px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold transition';
+
+      if (tab === 'orders') loadOrders();
+      if (tab === 'audit') loadAudit();
+    }
+
+    function usePrompt(text) {
+      document.getElementById('chat-input').value = text;
+      sendChatMessage();
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      if (!message) return;
+      input.value = '';
+
+      const container = document.getElementById('chat-messages');
+      container.innerHTML += `<div class="bg-blue-900/40 border border-blue-700/40 p-3 rounded-lg max-w-xl ml-auto text-sm">
+        <p class="font-semibold text-blue-300 mb-1">👤 You:</p>
+        <p>${message}</p>
+      </div>`;
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer cust_1'},
+          body: JSON.stringify({message: message})
+        });
+        const data = await res.json();
+
+        container.innerHTML += `<div class="bg-slate-700/50 border border-slate-600/50 p-3 rounded-lg max-w-xl text-sm">
+          <p class="font-semibold text-blue-400 mb-1">🤖 Agent:</p>
+          <p class="whitespace-pre-line">${data.reply}</p>
+        </div>`;
+        container.scrollTop = container.scrollHeight;
+
+        if (data.needs_confirmation && data.change_request) {
+          activePendingRequest = data.change_request;
+          document.getElementById('preview-box').classList.remove('hidden');
+          document.getElementById('preview-title').innerText = `Intent: ${data.change_request.intent} (Order #${data.change_request.order_id})`;
+          document.getElementById('preview-body').innerText = data.reply;
+        } else {
+          document.getElementById('preview-box').classList.add('hidden');
+          activePendingRequest = null;
+        }
+      } catch (err) {
+        container.innerHTML += `<div class="bg-rose-950/50 border border-rose-800 p-3 rounded-lg text-sm text-rose-300">Error communicating with server</div>`;
+      }
+    }
+
+    async function submitConfirmation(action) {
+      if (!activePendingRequest) return;
+      try {
+        const res = await fetch('/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer cust_1'},
+          body: JSON.stringify({
+            request_id: activePendingRequest.request_id,
+            action: action,
+            idempotency_key: activePendingRequest.idempotency_key
+          })
+        });
+        const data = await res.json();
+        document.getElementById('preview-box').classList.add('hidden');
+        activePendingRequest = null;
+
+        const container = document.getElementById('chat-messages');
+        const badge = action === 'confirm' ? '✅' : '❌';
+        container.innerHTML += `<div class="bg-slate-700/50 border border-slate-600/50 p-3 rounded-lg max-w-xl text-sm">
+          <p class="font-semibold text-blue-400 mb-1">🤖 Agent:</p>
+          <p>${badge} ${data.message || data.detail}</p>
+        </div>`;
+        container.scrollTop = container.scrollHeight;
+      } catch (err) {
+        alert('Confirmation failed: ' + err);
+      }
+    }
+
+    async function loadOrders() {
+      const list = document.getElementById('orders-list');
+      list.innerHTML = '<p class="text-sm text-slate-400">Loading orders...</p>';
+      try {
+        const res = await fetch('/orders', {headers: {'Authorization': 'Bearer cust_1'}});
+        const orders = await res.json();
+        list.innerHTML = '';
+        orders.forEach(o => {
+          let badgeColor = o.status === 'placed' ? 'bg-blue-900/60 text-blue-300 border-blue-700' :
+                           (o.status === 'shipped' ? 'bg-amber-900/60 text-amber-300 border-amber-700' : 'bg-rose-900/60 text-rose-300 border-rose-700');
+          list.innerHTML += `
+            <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center shadow">
+              <div>
+                <div class="flex items-center space-x-3">
+                  <h3 class="font-bold text-base text-slate-100">Order #${o.order_ref}</h3>
+                  <span class="text-xs uppercase font-semibold px-2.5 py-0.5 rounded-full border ${badgeColor}">${o.status}</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Delivery Address: <span class="text-slate-200 font-mono">${o.shipping_address}</span></p>
+                <p class="text-xs text-slate-400">Version: ${o.version} | Booking ID: ${o.booking_id || 'N/A'}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-lg font-bold text-emerald-400">$${o.total_amount}</p>
+                <p class="text-xs text-slate-400">Delivery: ${o.delivery_date || 'TBD'}</p>
+              </div>
+            </div>`;
+        });
+      } catch (e) {
+        list.innerHTML = '<p class="text-sm text-rose-400">Failed to load orders</p>';
+      }
+    }
+
+    async function loadAudit() {
+      const list = document.getElementById('audit-list');
+      list.innerHTML = '<p class="text-sm text-slate-400">Loading audit log...</p>';
+      try {
+        const res = await fetch('/audit', {headers: {'Authorization': 'Bearer cust_1'}});
+        const logs = await res.json();
+        list.innerHTML = '';
+        if (logs.length === 0) {
+          list.innerHTML = '<p class="text-sm text-slate-400">No audit records yet. Submit a change in the chat!</p>';
+          return;
+        }
+        logs.reverse().forEach(a => {
+          const badge = a.decision === 'approved' ? '🟢 APPROVED' : (a.decision === 'blocked' ? '🔴 BLOCKED' : '🟡 ' + a.decision.toUpperCase());
+          list.innerHTML += `
+            <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl text-sm">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-mono text-xs font-bold text-slate-300">Action: ${a.action}</span>
+                <span class="text-xs font-bold tracking-wide">${badge}</span>
+              </div>
+              <p class="text-xs text-slate-400">Order ID: #${a.order_id || 'N/A'} | Latency: ${a.latency_ms}ms | Time: ${new Date(a.created_at).toLocaleTimeString()}</p>
+              <div class="mt-2 text-xs bg-slate-900/60 p-2 rounded border border-slate-700 font-mono text-slate-300">
+                <p>Before: ${JSON.stringify(a.before_state)}</p>
+                <p>After:  ${JSON.stringify(a.after_state)}</p>
+              </div>
+            </div>`;
+        });
+      } catch (e) {
+        list.innerHTML = '<p class="text-sm text-rose-400">Failed to load audit trail</p>';
+      }
+    }
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
