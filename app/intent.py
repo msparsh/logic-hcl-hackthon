@@ -139,25 +139,35 @@ def build_messages(message: str, orders: list[dict], today: date) -> list[dict]:
 # Regex fallback (deterministic, no network)
 # ---------------------------------------------------------------------------
 
+# Keyword lists are kept wide (synonyms and common typos such as "adress" or
+# "cancle") so the regex fallback still understands everyday wording.
+_ADDRESS_WORD = r"ad{1,2}re?s{1,2}"  # address, adress, addres, adres
 _ACTIONS = {
-    Intent.CANCEL_ORDER: r"\b(cancel|abort|don'?t want|do not want)\b",
-    Intent.POSTPONE_DELIVERY: r"\b(postpone|reschedule|delay|push back|later date)\b",
-    Intent.CHANGE_ADDRESS: r"\b(address|ship(?:ping)? (?:it )?to|deliver(?:y)? (?:it )?to|send (?:it )?to)\b",
+    Intent.CANCEL_ORDER: r"\b(cancel\w*|cancle\w*|cancl|abort|call off|don'?t (?:want|need)|"
+                         r"do not (?:want|need)|no longer (?:want|need))\b",
+    Intent.POSTPONE_DELIVERY: r"\b(postpone\w*|reschedul\w*|delay\w*|push(?:ed)? back|later date|"
+                              r"(?:change|move|shift) (?:the |my )?(?:delivery )?date)\b",
+    Intent.CHANGE_ADDRESS: rf"\b({_ADDRESS_WORD}|location|ship(?:ping)? (?:it )?to|"
+                           r"deliver(?:y)? (?:it )?to|send (?:it )?to|move (?:it|my order|the order) to)\b",
 }
-_TRACK = r"\b(track|where is|where's|status|when will|arrive|delivery date)\b"
-_ESCALATE = r"\b(refund|return|replace|replacement|complaint|damaged)\b"
-_GREETING = r"^\s*(hi|hello|hey|good (morning|afternoon|evening))\b"
+_TRACK = (r"\b(track\w*|where|status|when|arriv\w*|eta|delivery date|reach\w*|"
+          r"shipped|delivered|dispatch\w*|update on|check (?:on )?my order|order details)\b")
+_ESCALATE = r"\b(refund|return|replace|replacement|complaint|damaged|broken|wrong item|human|agent)\b"
+_GREETING = r"^\s*(hi|hello|hey|hii+|yo|good (morning|afternoon|evening))\b"
 _ORDER_PATTERNS = (
     r"\bORD[-\s]?(\d{4,7})\b",
     r"\border\s*(?:no\.?|number|id)?\s*#?\s*(\d{4,7})\b",
     r"(?:^|\s)#\s?(\d{4,7})\b",
+    r"\b(\d{4,7})\b",  # last resort: a bare number; _finalize checks the customer owns it
 )
 
 
 def _extract_address(text: str) -> Optional[str]:
     """Text after 'to' in an address request, minus any order mention."""
-    match = re.search(r"(?:address|ship|deliver|send)[^\n]*?\bto\b\s*:?\s*(.+)$", text,
-                      re.IGNORECASE)
+    match = re.search(rf"(?:{_ADDRESS_WORD}|location|ship|deliver|send|move)[^\n]*?\bto\b\s*:?\s*(.+)$",
+                      text, re.IGNORECASE)
+    # Also accept "new address is X" / "address: X" without the word "to".
+    match = match or re.search(rf"{_ADDRESS_WORD}\s*(?:is|:|=|-)\s*(.+)$", text, re.IGNORECASE)
     if not match:
         return None
     address = match.group(1)
@@ -168,6 +178,8 @@ def _extract_address(text: str) -> Optional[str]:
 
 
 def _extract_order_id(text: str) -> Optional[int]:
+    # Remove dates first, so "2026-11-02" or "02/11/2026" is not read as an order number.
+    text = re.sub(r"\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", " ", text)
     for pattern in _ORDER_PATTERNS:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
