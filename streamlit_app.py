@@ -614,10 +614,17 @@ if page == "💬 Order Support Desk":
         with st.chat_message("user", avatar="👤"):
             st.markdown(user_msg)
 
+        # After "Change Address", the next message is the new address for that order.
+        api_msg = user_msg
+        if st.session_state.awaiting_address_for:
+            api_msg = (f"Change shipping address for order "
+                       f"{st.session_state.awaiting_address_for} to {user_msg}")
+            st.session_state.awaiting_address_for = None
+
         with st.chat_message("assistant", avatar="🛍️"):
             with st.spinner("Processing request and verifying security guardrails..."):
                 status_code, resp = api_request(
-                    "POST", "/chat", {"message": user_msg})
+                    "POST", "/chat", {"message": api_msg})
 
             if status_code == 200:
                 reply = resp.get("reply", "")
@@ -798,14 +805,9 @@ elif page == "📦 My Orders & Tracking":
                 with b1:
                     if status_val == "placed" and pay_status != "Failed":
                         if st.button("📍 Change Address", key=f"btn_addr_{order_id}", use_container_width=True):
-<<<<<<< HEAD
-                            st.session_state.queued_prompt = f"Change shipping address for order {order_id} to 12 MG Road, Pune"
-                            st.toast("Address change loaded in Support Desk! Switch to 'Order Support Desk' to confirm.", icon="📍")
-=======
                             ask_for_new_address(order_id)
                             st.toast(
                                 "Switch to 'Order Support Desk' and type the new address.", icon="📍")
->>>>>>> 9cb048a (ui changess)
                     else:
                         st.button("📍 Change Address", key=f"btn_addr_dis_{order_id}", disabled=True, help="Address modification locked (Only allowed for placed, paid orders)")
 
@@ -823,227 +825,6 @@ elif page == "📦 My Orders & Tracking":
                         st.toast("Loaded tracking inquiry into Support Desk!", icon="💬")
 
 
-<<<<<<< HEAD
-=======
-# ============================================================================
-# PAGE 2: 💬 Order Support Desk (Integrated Autonomous Agent with Guardrails)
-# ============================================================================
-elif page == "💬 Order Support Desk":
-    st.markdown(
-        """
-        <div style="margin-bottom:1.5rem;">
-            <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">Customer Order Support Desk</h1>
-            <p style="color:#94a3b8; font-size:0.88rem; margin:0;">
-                Chat naturally to update delivery addresses, cancel orders, or track shipments. Governed by deterministic business rules and safety guardrails.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_chat, col_guardrails = st.columns([7, 3], gap="large")
-
-    with col_chat:
-        # Quick Inquiries Bar
-        st.markdown("<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Quick Customer Inquiries:</p>", unsafe_allow_html=True)
-        q1, q2, q3, q4 = st.columns(4)
-        with q1:
-            if st.button("📍 Change Address (#10001)", use_container_width=True):
-                ask_for_new_address(10001)
-                st.rerun()
-        with q2:
-            if st.button("🚚 Track Shipment (#10002)", use_container_width=True):
-                st.session_state.queued_prompt = "Track order 10002"
-                st.rerun()
-        with q3:
-            if st.button("❌ Cancel Order (#10001)", use_container_width=True):
-                st.session_state.queued_prompt = "Cancel order 10001"
-                st.rerun()
-        with q4:
-            if st.button("🛡️ Test Shipped Block (#10002)", use_container_width=True):
-                st.session_state.queued_prompt = "Change shipping address for order 10002 to 55 Lake Road"
-                st.rerun()
-
-        st.markdown("---")
-
-        # Render Chat Stream
-        if not st.session_state.chat_history:
-            st.info("👋 Welcome! You can ask questions about your orders, request an address update before courier dispatch, or track delivery status.")
-
-        for msg in st.session_state.chat_history:
-            role = msg.get("role", "assistant")
-            avatar = "👤" if role == "user" else "🛍️"
-            with st.chat_message(role, avatar=avatar):
-                st.markdown(msg.get("content", ""))
-                trace = msg.get("trace")
-                if trace:
-                    with st.expander("🔍 Guardrail Decision & Latency Trace", expanded=False):
-                        for step in trace:
-                            node = step.get("node", "Checkpoint")
-                            stat = step.get("status", "OK")
-                            color = "#34d399" if any(w in stat.lower() for w in [
-                                                     "success", "ok", "customer", "intent"]) else "#fbbf24"
-                            st.markdown(
-                                f"- **{node}**: <span style='color:{color}; font-weight:600;'>{stat}</span>", unsafe_allow_html=True)
-
-        # Render Pending State Modification Confirmation Review Box
-        if st.session_state.pending_change_request:
-            cr = st.session_state.pending_change_request
-            order_target = cr.get("order_id")
-            intent_val = cr.get("intent")
-            curr_state = cr.get("preview", {}).get("current")
-            new_state = cr.get("preview", {}).get("new")
-
-            st.markdown(
-                f"""
-                <div class="review-box">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.7rem;">
-                        <span style="font-size:1rem; font-weight:800; color:#fbbf24;">
-                            ⚠️ Confirmation Required: Proposed Order Modification
-                        </span>
-                        <span style="font-size:0.75rem; background:#1e293b; color:#94a3b8; padding:3px 10px; border-radius:999px;">
-                            Valid for 5 minutes
-                        </span>
-                    </div>
-                    <div style="font-size:0.85rem; color:#cbd5e1; margin-bottom:0.9rem;">
-                        The agent verified that <b>Order #{order_target}</b> is eligible for modification. Review the state change before writing to the database:
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            d_col1, d_col2 = st.columns(2)
-            with d_col1:
-                st.markdown("**Current State in Database:**")
-                st.code(json.dumps(
-                    {"order_id": order_target, "state": curr_state}, indent=2), language="json")
-            with d_col2:
-                st.markdown("**Proposed State to Commit:**")
-                st.code(json.dumps(
-                    {"order_id": order_target, "state": new_state}, indent=2), language="json")
-
-            c_confirm, c_decline = st.columns(2)
-            with c_confirm:
-                if st.button("✅ Confirm & Apply Changes", type="primary", use_container_width=True):
-                    s_code, resp = api_request("POST", "/confirm", {
-                        "request_id": cr["request_id"],
-                        "action": "confirm",
-                        "idempotency_key": cr["idempotency_key"]
-                    })
-                    if s_code == 200:
-                        msg = resp.get(
-                            "message", "Order successfully updated in database.")
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"✅ **Confirmed & Applied:** {msg}"})
-                        st.toast(
-                            "Database updated and audit trail recorded!", icon="✅")
-                    else:
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
-                    st.session_state.pending_change_request = None
-                    st.rerun()
-
-            with c_decline:
-                if st.button("✕ Decline & Discard", use_container_width=True):
-                    api_request("POST", "/confirm", {
-                        "request_id": cr["request_id"],
-                        "action": "cancel",
-                        "idempotency_key": cr["idempotency_key"]
-                    })
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": "❌ Change request declined and discarded."})
-                    st.session_state.pending_change_request = None
-                    st.rerun()
-
-        # Chat Input Box
-        user_msg = st.chat_input(
-            "Ask a question or enter an order instruction...") or st.session_state.queued_prompt
-        st.session_state.queued_prompt = None
-
-        if user_msg:
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_msg})
-            with st.chat_message("user", avatar="👤"):
-                st.markdown(user_msg)
-
-            # We asked for an address: treat plain text as the address for that order.
-            # If the user typed a full instruction instead (e.g. "cancel order ..."), send it as is.
-            if st.session_state.awaiting_address_for:
-                if re.search(r"\b(order|cancel|track|change)\b", user_msg, re.IGNORECASE):
-                    st.session_state.awaiting_address_for = None
-                else:
-                    user_msg = (f"Change shipping address for order "
-                                f"{st.session_state.awaiting_address_for} to {user_msg}")
-                    st.session_state.awaiting_address_for = None
-
-            with st.chat_message("assistant", avatar="🛍️"):
-                with st.spinner("Processing request and verifying security guardrails..."):
-                    status_code, resp = api_request(
-                        "POST", "/chat", {"message": user_msg})
-
-                if status_code == 200:
-                    reply = resp.get("reply", "")
-                    st.markdown(reply)
-
-                    if resp.get("needs_confirmation") and resp.get("change_request"):
-                        st.session_state.pending_change_request = resp["change_request"]
-
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": reply,
-                        "trace": resp.get("trace", [])
-                    })
-                    st.rerun()
-                else:
-                    err = resp.get(
-                        "detail", "Error communicating with backend.")
-                    st.error(err)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": f"⚠️ {err}"})
-
-    with col_guardrails:
-        st.markdown(
-            """
-            <div style="background:#131520; border:1px solid #1f2334; border-radius:12px; padding:1.1rem; margin-bottom:1rem;">
-                <div style="font-weight:700; font-size:0.95rem; color:#f8fafc; margin-bottom:0.4rem;">
-                    🛡️ Enforcement Guardrails
-                </div>
-                <div style="font-size:0.75rem; color:#94a3b8; line-height:1.4;">
-                    Every customer mutation is verified by deterministic business logic before altering database records.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        guardrails_spec = [
-            ("R1: Customer Authentication",
-             "JWT Bearer identity validation (no chat text spoofing)", "#34d399"),
-            ("R2: Tenant Ownership Isolation",
-             "Orders filtered by authenticated customer ID", "#34d399"),
-            ("R3/R4: Fulfillment Cutoff Check",
-             "Shipped & delivered orders are immutable", "#fbbf24"),
-            ("R5: Payment Verification Check",
-             "Failed payment orders cannot alter address", "#fb7185"),
-            ("R8/R9: 2-Phase Confirmation TTL",
-             "5-minute preview window with idempotency locks", "#60a5fa"),
-            ("R10: PII Masked Audit Trail",
-             "Addresses automatically redacted in compliance logs", "#a78bfa"),
-        ]
-
-        for title, desc, color in guardrails_spec:
-            st.markdown(
-                f"""
-                <div style="background:#151824; border:1px solid #202638; border-radius:10px; padding:0.65rem 0.8rem; margin-bottom:0.5rem; font-size:0.78rem;">
-                    <div style="font-weight:700; color:{color};">{title}</div>
-                    <div style="color:#64748b; font-size:0.72rem; margin-top:2px;">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
->>>>>>> 9cb048a (ui changess)
 
 # ============================================================================
 # PAGE 3: 🛍️ Store Catalog (Real Products & Realistic E-Commerce Inventory)
