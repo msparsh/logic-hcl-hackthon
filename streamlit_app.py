@@ -254,12 +254,14 @@ st.markdown(
 # ---------------------------------------------------------------------------
 def api_request(method: str, path: str, json_data: dict = None):
     url = f"{API_BASE_URL}{path}"
-    headers = {"Authorization": f"Bearer {st.session_state.token}"} if st.session_state.token else {}
+    headers = {
+        "Authorization": f"Bearer {st.session_state.token}"} if st.session_state.token else {}
     try:
         if method.upper() == "GET":
             resp = requests.get(url, headers=headers, timeout=6)
         else:
-            resp = requests.post(url, headers=headers, json=json_data, timeout=6)
+            resp = requests.post(url, headers=headers,
+                                 json=json_data, timeout=6)
         if resp.status_code == 401 and st.session_state.token and path != "/login":
             st.session_state.token = None
         return resp.status_code, resp.json()
@@ -270,78 +272,71 @@ def api_request(method: str, path: str, json_data: dict = None):
         }
 
 
-# ---------------------------------------------------------------------------
-# LOGIN VIEW: Professional Customer Sign-In
-# ---------------------------------------------------------------------------
+# ============================================================================
+# LOGIN GATE (rule R1): nothing else renders until the backend issues a token.
+# The token comes from POST /login and is sent as a Bearer header by api_request.
+# ============================================================================
 if not st.session_state.token:
+    # Hide the sidebar on the login screen and narrow the page
     st.markdown(
         """
-        <div style="max-width:540px; margin:3rem auto 1.5rem; text-align:center;">
-            <div style="width:56px; height:56px; border-radius:16px; background:linear-gradient(135deg, #2563eb, #3b82f6); display:inline-flex; align-items:center; justify-content:center; font-size:1.8rem; margin-bottom:1rem; box-shadow:0 8px 24px rgba(37,99,235,0.4);">
-                🛍️
-            </div>
-            <h1 style="font-size:2rem; font-weight:800; color:#ffffff; margin:0 0 0.4rem 0;">Logic Commerce</h1>
-            <p style="color:#94a3b8; font-size:0.92rem; margin:0 0 2rem 0;">Secure Order Hub & Autonomous Customer Support Portal</p>
+        <style>
+        section[data-testid="stSidebar"], div[data-testid="collapsedControl"] { display: none !important; }
+        .login-wrap { text-align: center; margin-top: 6vh; margin-bottom: 1.4rem; }
+        .login-title { font-size: 1.9rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.03em; }
+        .login-sub { font-size: 0.85rem; color: #94a3b8; margin-top: 0.3rem; }
+        div[data-testid="stForm"] {
+            background: #13161f; border: 1px solid #1f2433; border-radius: 14px; padding: 1.5rem;
+        }
+        </style>
+        <div class="login-wrap">
+            <div class="hero-logo-box">🤖</div>
+            <div class="login-title">Welcome to Logic</div>
+            <div class="login-sub">Sign in to manage your orders with the AI support agent</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    col_l1, col_center, col_l2 = st.columns([1, 2.2, 1])
-    with col_center:
-        with st.container(border=True):
-            st.markdown("### Sign In to Your Account")
-            st.caption("Enter your registered email and 4-digit security PIN.")
+    _, col_login, _ = st.columns([1, 1.2, 1])
+    with col_login:
+        with st.form("login_form"):
+            email = st.text_input("Email", placeholder="you@example.com")
+            pin = st.text_input("PIN", type="password",
+                                placeholder="4 to 8 digits")
+            submitted = st.form_submit_button(
+                "Sign in", type="primary", use_container_width=True)
+        st.caption("Demo account: alice@example.com / PIN 1234")
 
-            with st.form("signin_form"):
-                email_input = st.text_input("Customer Email", value="alice@example.com", placeholder="e.g. alice@example.com")
-                pin_input = st.text_input("Security PIN", value="1234", type="password", placeholder="Demo PIN: 1234")
-                login_btn = st.form_submit_button("Sign In Securely", type="primary", use_container_width=True)
-
-            if login_btn:
-                code, resp = api_request("POST", "/login", {"email": email_input.strip().lower(), "pin": pin_input.strip()})
+        if submitted:
+            # Validate before calling the backend so the user gets a clear message
+            if not email.strip() or not pin:
+                st.error("Please enter both your email and PIN.")
+            elif not (pin.isdigit() and 4 <= len(pin) <= 8):
+                st.error("PIN must be 4 to 8 digits.")
+            else:
+                code, resp = api_request(
+                    "POST", "/login", {"email": email.strip(), "pin": pin})
                 if code == 200:
+                    # Authenticated: store identity + token, then rerun into the main app
                     st.session_state.token = resp["access_token"]
                     st.session_state.customer_email = resp["customer_email"]
                     st.session_state.customer_name = resp["customer_name"]
-                    st.session_state.customer_id = resp["customer_id"]
-                    st.toast(f"Welcome back, {resp['customer_name']}!", icon="✅")
                     st.rerun()
-                elif "error" in resp:
+                elif "error" in resp:  # backend unreachable
                     st.error(resp["error"])
+                # 401 wrong credentials / 429 locked out
                 elif isinstance(resp.get("detail"), str):
-                    st.error(f"Authentication failed: {resp['detail']}")
-                else:
-                    st.error("Invalid credentials. Please enter a valid email and 4-digit PIN.")
-
-            st.markdown("---")
-            st.markdown("<p style='font-size:0.8rem; font-weight:600; color:#94a3b8; margin-bottom:0.5rem;'>One-Click Demo Profiles:</p>", unsafe_allow_html=True)
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                if st.button("👤 Alice Smith (Pune)", use_container_width=True):
-                    code, resp = api_request("POST", "/login", {"email": "alice@example.com", "pin": "1234"})
-                    if code == 200:
-                        st.session_state.token = resp["access_token"]
-                        st.session_state.customer_email = resp["customer_email"]
-                        st.session_state.customer_name = resp["customer_name"]
-                        st.session_state.customer_id = resp["customer_id"]
-                        st.rerun()
-            with col_d2:
-                if st.button("👤 Bob Kumar (Ahmedabad)", use_container_width=True):
-                    code, resp = api_request("POST", "/login", {"email": "bob@example.com", "pin": "1234"})
-                    if code == 200:
-                        st.session_state.token = resp["access_token"]
-                        st.session_state.customer_email = resp["customer_email"]
-                        st.session_state.customer_name = resp["customer_name"]
-                        st.session_state.customer_id = resp["customer_id"]
-                        st.rerun()
-
-    st.stop()
+                    st.error(resp["detail"])
+                else:  # 422 format errors
+                    st.error(
+                        "Enter a valid email and a numeric PIN of 4 to 8 digits.")
+    st.stop()  # never render the app below without a token
 
 
-# ---------------------------------------------------------------------------
-# SIDEBAR: Brand, Customer Profile, Navigation, and Backend Health
-# ---------------------------------------------------------------------------
+# ============================================================================
+# SIDEBAR: Navigation, History Timeline, Customer Card, Logout
+# ============================================================================
 with st.sidebar:
     st.markdown(
         """
@@ -357,7 +352,8 @@ with st.sidebar:
     )
 
     # Customer Profile Card
-    initials = "".join([part[0] for part in st.session_state.customer_name.split()[:2]]).upper() or "CU"
+    initials = "".join(
+        [part[0] for part in st.session_state.customer_name.split()[:2]]).upper() or "CU"
     st.markdown(
         f"""
         <div class="profile-card">
@@ -379,10 +375,12 @@ with st.sidebar:
 
     # Quick Switch Customer (Demonstrates strict multi-tenant isolation)
     with st.expander("🔄 Switch Customer Account (RBAC Demo)", expanded=False):
-        st.caption("Demonstrate multi-tenant data isolation. Alice and Bob cannot access or modify each other's orders.")
+        st.caption(
+            "Demonstrate multi-tenant data isolation. Alice and Bob cannot access or modify each other's orders.")
         if st.session_state.customer_email == "alice@example.com":
             if st.button("Switch to Bob Kumar (Ahmedabad)", use_container_width=True):
-                code, resp = api_request("POST", "/login", {"email": "bob@example.com", "pin": "1234"})
+                code, resp = api_request(
+                    "POST", "/login", {"email": "bob@example.com", "pin": "1234"})
                 if code == 200:
                     st.session_state.token = resp["access_token"]
                     st.session_state.customer_email = resp["customer_email"]
@@ -393,7 +391,8 @@ with st.sidebar:
                     st.rerun()
         else:
             if st.button("Switch to Alice Smith (Pune)", use_container_width=True):
-                code, resp = api_request("POST", "/login", {"email": "alice@example.com", "pin": "1234"})
+                code, resp = api_request(
+                    "POST", "/login", {"email": "alice@example.com", "pin": "1234"})
                 if code == 200:
                     st.session_state.token = resp["access_token"]
                     st.session_state.customer_email = resp["customer_email"]
@@ -407,7 +406,8 @@ with st.sidebar:
     st.markdown("<p style='font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.08em; text-transform:uppercase; margin-top:1.2rem; margin-bottom:0.5rem;'>PORTAL NAVIGATION</p>", unsafe_allow_html=True)
     page = st.radio(
         "Navigation",
-        ["📦 My Orders & Tracking", "💬 Order Support Desk", "🛍️ Store Catalog", "🛡️ Security & Audit Trail"],
+        ["📦 My Orders & Tracking", "💬 Order Support Desk",
+            "🛍️ Store Catalog", "🛡️ Security & Audit Trail"],
         label_visibility="collapsed",
     )
 
@@ -433,24 +433,34 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    if st.button("🚪 Log Out", use_container_width=True):
-        st.session_state.token = None
-        st.session_state.customer_email = ""
-        st.session_state.customer_name = ""
-        st.session_state.chat_history = []
-        st.session_state.pending_change_request = None
-        st.rerun()
+    st.markdown("---")
 
+    # Session Profile Card
+    status_code, health = api_request("GET", "/health")
+    backend_online = (status_code == 200)
+    initials = "".join(w[0] for w in st.session_state.customer_name.split()[
+                       :2]).upper() or "?"
 
 # ============================================================================
 # PAGE 1: 📦 My Orders & Tracking (Real E-Commerce Order Management)
 # ============================================================================
 if page == "📦 My Orders & Tracking":
     st.markdown(
-        """
-        <div style="margin-bottom:1.5rem;">
-            <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">Your Orders & Shipments</h1>
-            <p style="color:#94a3b8; font-size:0.88rem; margin:0;">Track live fulfillment status, delivery estimates, package contents, and manage shipping addresses.</p>
+        f"""
+        <div style="background:#151822; border:1px solid #232838; border-radius:10px; padding:0.75rem; margin-bottom:0.7rem;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:32px; height:32px; border-radius:50%; background:#2563eb; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff;">{initials}</div>
+                <div>
+                    <div style="font-size:0.82rem; font-weight:600; color:#f8fafc;">{st.session_state.customer_name}</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">{st.session_state.customer_email}</div>
+                </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; font-size:0.7rem;">
+                <span style="color:#64748b;">Backend Status:</span>
+                <span style="color:{'#34d399' if backend_online else '#f87171'}; font-weight:600;">
+                    {'● FastAPI 8000 Online' if backend_online else '○ Offline'}
+                </span>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -461,127 +471,86 @@ if page == "📦 My Orders & Tracking":
         if st.button("🔄 Refresh Orders", use_container_width=True):
             st.rerun()
 
-    status_code, orders = api_request("GET", "/orders")
+    # Logout: drop the token and all per-user state, which returns to the login screen
+    if st.button("🚪 Log out", use_container_width=True):
+        st.session_state.token = None
+        st.session_state.customer_email = ""
+        st.session_state.customer_name = ""
+        st.session_state.chat_history = []
+        st.session_state.pending_change_request = None
+        st.session_state.queued_prompt = None
+        st.rerun()
 
-    if status_code != 200 or not isinstance(orders, list):
-        st.error("Failed to load orders from backend. Make sure FastAPI is running on port 8000.")
-    elif len(orders) == 0:
-        st.info("No orders found for your account.")
-    else:
-        for o in orders:
-            order_id = o.get("order_id")
-            order_ref = o.get("order_ref", f"ORD-{order_id}")
-            status_val = o.get("status", "placed").lower()
-            pay_status = o.get("payment_status", "Success")
-            pay_method = o.get("payment_method", "Credit Card")
-            total = o.get("total_amount", "0.00")
-            ship_addr = o.get("shipping_address", "N/A")
-            delivery_date = o.get("delivery_date", "TBD")
-            items = o.get("items", [])
-            version = o.get("version", 1)
 
-            # Determine visual badge class
-            if status_val == "placed":
-                badge_html = '<span class="status-badge status-placed">● Placed & Verified</span>'
-                step_idx = 1
-            elif status_val == "shipped":
-                badge_html = '<span class="status-badge status-shipped">🚚 In Transit (Dispatched)</span>'
-                step_idx = 2
-            elif status_val == "delivered":
-                badge_html = '<span class="status-badge status-delivered">✅ Delivered</span>'
-                step_idx = 3
-            elif status_val == "cancelled":
-                badge_html = '<span class="status-badge status-cancelled">❌ Cancelled & Refunded</span>'
-                step_idx = 0
-            else:
-                badge_html = f'<span class="status-badge status-placed">{status_val.upper()}</span>'
-                step_idx = 1
+# ============================================================================
+# PAGE 1: 💬 Ask Logic (Conversational Agent with Hero & Right Tools Panel)
+# ============================================================================
+if page == "💬 Ask Logic":
+    # 2-column layout: Main Chat (70%) + Right Guardrail/Tools Inspector (30%)
+    col_main, col_tools = st.columns([7, 3], gap="medium")
 
-            if pay_status == "Failed":
-                badge_html += ' <span class="status-badge status-failed">⚠️ Payment Failed</span>'
+    with col_main:
+        # Welcome Hero (shown when no prior chat)
+        if not st.session_state.chat_history and not st.session_state.pending_change_request:
+            st.markdown(
+                f"""
+                <div class="hero-wrap">
+                    <div class="hero-logo-box">🤖</div>
+                    <div class="hero-hello">Hello! {st.session_state.customer_name}</div>
+                    <div class="hero-heading">How can I help you today?</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-            # Order Card
-            with st.container(border=True):
-                # Header row
-                c_title, c_meta = st.columns([3, 2])
-                with c_title:
-                    st.markdown(
-                        f"""
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
-                            <span style="font-size:1.25rem; font-weight:800; color:#ffffff;">Order #{order_ref}</span>
-                            {badge_html}
-                        </div>
-                        <div style="font-size:0.78rem; color:#64748b;">
-                            Booking Ref: <code>{o.get('booking_id', 'N/A')}</code> · DB Version: <b>v{version}</b> · Payment: <b>{pay_method} ({pay_status})</b>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with c_meta:
-                    st.markdown(
-                        f"""
-                        <div style="text-align:right;">
-                            <div style="font-size:1.35rem; font-weight:800; color:#34d399;">₹{float(total):,.2f}</div>
-                            <div style="font-size:0.75rem; color:#94a3b8;">Est. Delivery: <b>{delivery_date}</b></div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            # Top Pill Chips
+            st.markdown(
+                """
+                <div class="pill-group">
+                    <span class="badge-pill">📍 Order Address Guardrails ✕</span>
+                    <span class="badge-pill">🚚 Live Package Tracking ✕</span>
+                    <span class="badge-pill">🛡️ Strict PII Masking ✕</span>
+                    <span class="badge-pill">⚡ Immutable Audit Ledger ✕</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                # Visual Delivery Tracker Timeline (if not cancelled)
-                if status_val != "cancelled":
-                    st.markdown(
-                        f"""
-                        <div class="timeline-bar">
-                            <div class="timeline-step">
-                                <div class="timeline-dot dot-done"></div>
-                                <span style="color:#10b981;">1. Placed</span>
-                            </div>
-                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 1 else '#334155'}; margin:0 8px -18px;"></div>
-                            <div class="timeline-step">
-                                <div class="timeline-dot {'dot-done' if step_idx >= 2 else ('dot-current' if step_idx == 1 else 'dot-pending')}"></div>
-                                <span style="color:{'#10b981' if step_idx >= 2 else ('#60a5fa' if step_idx == 1 else '#64748b')};">2. Confirmed</span>
-                            </div>
-                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 2 else '#334155'}; margin:0 8px -18px;"></div>
-                            <div class="timeline-step">
-                                <div class="timeline-dot {'dot-done' if step_idx >= 3 else ('dot-current' if step_idx == 2 else 'dot-pending')}"></div>
-                                <span style="color:{'#10b981' if step_idx >= 3 else ('#60a5fa' if step_idx == 2 else '#64748b')};">3. In Transit</span>
-                            </div>
-                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 3 else '#334155'}; margin:0 8px -18px;"></div>
-                            <div class="timeline-step">
-                                <div class="timeline-dot {'dot-done' if step_idx >= 3 else 'dot-pending'}"></div>
-                                <span style="color:{'#10b981' if step_idx >= 3 else '#64748b'};">4. Delivered</span>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+            # 4 Pro Action Cards in a 4-column row
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown(
+                    """
+                    <div class="pro-card">
+                        <div class="card-icon-badge badge-red">📍</div>
+                        <div class="card-title">Modify Address</div>
+                        <div class="card-desc">Safely change shipping address before courier dispatch cutoff.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button("Change Address", key="act_addr", use_container_width=True):
+                    st.session_state.queued_prompt = "Change shipping address for order 10023 to 12 MG Road, Pune"
+                    st.rerun()
 
-                # Items and Shipping details
-                col_items, col_shipping = st.columns([3, 2])
-                with col_items:
-                    st.markdown("<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Package Line Items:</p>", unsafe_allow_html=True)
-                    for it in items:
-                        prod = it.get("product") or {}
-                        qty = it.get("quantity", 1)
-                        price = it.get("item_price", "0.00")
-                        st.markdown(
-                            f"""
-                            <div style="display:flex; justify-content:space-between; align-items:center; background:#161925; border:1px solid #202638; border-radius:8px; padding:0.55rem 0.8rem; margin-bottom:0.35rem; font-size:0.82rem;">
-                                <div>
-                                    <span style="font-weight:600; color:#f1f5f9;">{prod.get('name', 'Product Item')}</span>
-                                    <span style="color:#64748b; font-size:0.75rem; margin-left:6px;">({prod.get('base_colour', '')} · {prod.get('article_type', '')})</span>
-                                </div>
-                                <div style="font-weight:700; color:#e2e8f0;">
-                                    {qty} × ₹{float(price):,.2f}
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+            with c2:
+                st.markdown(
+                    """
+                    <div class="pro-card">
+                        <div class="card-icon-badge badge-green">🚚</div>
+                        <div class="card-title">Track Orders</div>
+                        <div class="card-desc">Inspect real-time order status, fulfillment stage & estimated delivery.</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button("Track #10023", key="act_track", use_container_width=True):
+                    st.session_state.queued_prompt = "Track order 10023"
+                    st.rerun()
 
                 with col_shipping:
-                    st.markdown("<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Destination Shipping Address:</p>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Destination Shipping Address:</p>", unsafe_allow_html=True)
                     st.markdown(
                         f"""
                         <div style="background:#161925; border:1px solid #202638; border-radius:8px; padding:0.65rem 0.8rem; font-size:0.82rem;">
@@ -595,28 +564,34 @@ if page == "📦 My Orders & Tracking":
                     )
 
                 # Quick action buttons
-                st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='height:4px;'></div>",
+                            unsafe_allow_html=True)
                 b1, b2, b3, _ = st.columns([1.5, 1.5, 1.5, 3])
                 with b1:
                     if status_val == "placed" and pay_status != "Failed":
                         if st.button("📍 Change Address", key=f"btn_addr_{order_id}", use_container_width=True):
                             st.session_state.queued_prompt = f"Change shipping address for order {order_id} to 12 MG Road, Pune"
-                            st.toast("Address change loaded in Support Desk! Switch to 'Order Support Desk' to confirm.", icon="📍")
+                            st.toast(
+                                "Address change loaded in Support Desk! Switch to 'Order Support Desk' to confirm.", icon="📍")
                     else:
-                        st.button("📍 Change Address", key=f"btn_addr_dis_{order_id}", disabled=True, help="Address modification locked (Only allowed for placed, paid orders)")
+                        st.button("📍 Change Address", key=f"btn_addr_dis_{order_id}", disabled=True,
+                                  help="Address modification locked (Only allowed for placed, paid orders)")
 
                 with b2:
                     if status_val == "placed":
                         if st.button("❌ Cancel Order", key=f"btn_canc_{order_id}", use_container_width=True):
                             st.session_state.queued_prompt = f"Cancel order {order_id}"
-                            st.toast("Cancellation loaded in Support Desk!", icon="❌")
+                            st.toast(
+                                "Cancellation loaded in Support Desk!", icon="❌")
                     else:
-                        st.button("❌ Cancel Order", key=f"btn_canc_dis_{order_id}", disabled=True, help="Cancellation locked (Only allowed for placed orders)")
+                        st.button("❌ Cancel Order", key=f"btn_canc_dis_{order_id}", disabled=True,
+                                  help="Cancellation locked (Only allowed for placed orders)")
 
                 with b3:
                     if st.button("💬 Support Inquire", key=f"btn_supp_{order_id}", use_container_width=True):
                         st.session_state.queued_prompt = f"Track order {order_id}"
-                        st.toast("Loaded tracking inquiry into Support Desk!", icon="💬")
+                        st.toast(
+                            "Loaded tracking inquiry into Support Desk!", icon="💬")
 
 
 # ============================================================================
@@ -675,8 +650,10 @@ elif page == "💬 Order Support Desk":
                         for step in trace:
                             node = step.get("node", "Checkpoint")
                             stat = step.get("status", "OK")
-                            color = "#34d399" if any(w in stat.lower() for w in ["success", "ok", "customer", "intent"]) else "#fbbf24"
-                            st.markdown(f"- **{node}**: <span style='color:{color}; font-weight:600;'>{stat}</span>", unsafe_allow_html=True)
+                            color = "#34d399" if any(w in stat.lower() for w in [
+                                                     "success", "ok", "customer", "intent"]) else "#fbbf24"
+                            st.markdown(
+                                f"- **{node}**: <span style='color:{color}; font-weight:600;'>{stat}</span>", unsafe_allow_html=True)
 
         # Render Pending State Modification Confirmation Review Box
         if st.session_state.pending_change_request:
@@ -708,10 +685,12 @@ elif page == "💬 Order Support Desk":
             d_col1, d_col2 = st.columns(2)
             with d_col1:
                 st.markdown("**Current State in Database:**")
-                st.code(json.dumps({"order_id": order_target, "state": curr_state}, indent=2), language="json")
+                st.code(json.dumps(
+                    {"order_id": order_target, "state": curr_state}, indent=2), language="json")
             with d_col2:
                 st.markdown("**Proposed State to Commit:**")
-                st.code(json.dumps({"order_id": order_target, "state": new_state}, indent=2), language="json")
+                st.code(json.dumps(
+                    {"order_id": order_target, "state": new_state}, indent=2), language="json")
 
             c_confirm, c_decline = st.columns(2)
             with c_confirm:
@@ -722,11 +701,15 @@ elif page == "💬 Order Support Desk":
                         "idempotency_key": cr["idempotency_key"]
                     })
                     if s_code == 200:
-                        msg = resp.get("message", "Order successfully updated in database.")
-                        st.session_state.chat_history.append({"role": "assistant", "content": f"✅ **Confirmed & Applied:** {msg}"})
-                        st.toast("Database updated and audit trail recorded!", icon="✅")
+                        msg = resp.get(
+                            "message", "Order successfully updated in database.")
+                        st.session_state.chat_history.append(
+                            {"role": "assistant", "content": f"✅ **Confirmed & Applied:** {msg}"})
+                        st.toast(
+                            "Database updated and audit trail recorded!", icon="✅")
                     else:
-                        st.session_state.chat_history.append({"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
+                        st.session_state.chat_history.append(
+                            {"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
                     st.session_state.pending_change_request = None
                     st.rerun()
 
@@ -737,22 +720,26 @@ elif page == "💬 Order Support Desk":
                         "action": "cancel",
                         "idempotency_key": cr["idempotency_key"]
                     })
-                    st.session_state.chat_history.append({"role": "assistant", "content": "❌ Change request declined and discarded."})
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": "❌ Change request declined and discarded."})
                     st.session_state.pending_change_request = None
                     st.rerun()
 
         # Chat Input Box
-        user_msg = st.chat_input("Ask a question or enter an order instruction...") or st.session_state.queued_prompt
+        user_msg = st.chat_input(
+            "Ask a question or enter an order instruction...") or st.session_state.queued_prompt
         st.session_state.queued_prompt = None
 
         if user_msg:
-            st.session_state.chat_history.append({"role": "user", "content": user_msg})
+            st.session_state.chat_history.append(
+                {"role": "user", "content": user_msg})
             with st.chat_message("user", avatar="👤"):
                 st.markdown(user_msg)
 
             with st.chat_message("assistant", avatar="🛍️"):
                 with st.spinner("Processing request and verifying security guardrails..."):
-                    status_code, resp = api_request("POST", "/chat", {"message": user_msg})
+                    status_code, resp = api_request(
+                        "POST", "/chat", {"message": user_msg})
 
                 if status_code == 200:
                     reply = resp.get("reply", "")
@@ -768,9 +755,11 @@ elif page == "💬 Order Support Desk":
                     })
                     st.rerun()
                 else:
-                    err = resp.get("detail", "Error communicating with backend.")
+                    err = resp.get(
+                        "detail", "Error communicating with backend.")
                     st.error(err)
-                    st.session_state.chat_history.append({"role": "assistant", "content": f"⚠️ {err}"})
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": f"⚠️ {err}"})
 
     with col_guardrails:
         st.markdown(
@@ -788,12 +777,18 @@ elif page == "💬 Order Support Desk":
         )
 
         guardrails_spec = [
-            ("R1: Customer Authentication", "JWT Bearer identity validation (no chat text spoofing)", "#34d399"),
-            ("R2: Tenant Ownership Isolation", "Orders filtered by authenticated customer ID", "#34d399"),
-            ("R3/R4: Fulfillment Cutoff Check", "Shipped & delivered orders are immutable", "#fbbf24"),
-            ("R5: Payment Verification Check", "Failed payment orders cannot alter address", "#fb7185"),
-            ("R8/R9: 2-Phase Confirmation TTL", "5-minute preview window with idempotency locks", "#60a5fa"),
-            ("R10: PII Masked Audit Trail", "Addresses automatically redacted in compliance logs", "#a78bfa"),
+            ("R1: Customer Authentication",
+             "JWT Bearer identity validation (no chat text spoofing)", "#34d399"),
+            ("R2: Tenant Ownership Isolation",
+             "Orders filtered by authenticated customer ID", "#34d399"),
+            ("R3/R4: Fulfillment Cutoff Check",
+             "Shipped & delivered orders are immutable", "#fbbf24"),
+            ("R5: Payment Verification Check",
+             "Failed payment orders cannot alter address", "#fb7185"),
+            ("R8/R9: 2-Phase Confirmation TTL",
+             "5-minute preview window with idempotency locks", "#60a5fa"),
+            ("R10: PII Masked Audit Trail",
+             "Addresses automatically redacted in compliance logs", "#a78bfa"),
         ]
 
         for title, desc, color in guardrails_spec:
@@ -872,7 +867,8 @@ elif page == "🛍️ Store Catalog":
                     unsafe_allow_html=True,
                 )
                 if st.button(f"🛒 Order Item #{p_id}", key=f"cat_order_{p_id}", use_container_width=True):
-                    st.toast(f"Demo order simulated for {p.get('name')}!", icon="🎉")
+                    st.toast(
+                        f"Demo order simulated for {p.get('name')}!", icon="🎉")
 
 
 # ============================================================================
@@ -903,9 +899,12 @@ elif page == "🛡️ Security & Audit Trail":
     else:
         # Summary Metric Cards
         total_logs = len(logs)
-        approved_count = sum(1 for l in logs if l.get("decision", "").lower() == "approved")
-        blocked_count = sum(1 for l in logs if l.get("decision", "").lower() == "blocked")
-        avg_latency = round(sum(l.get("latency_ms", 5) for l in logs) / max(total_logs, 1), 1)
+        approved_count = sum(1 for l in logs if l.get(
+            "decision", "").lower() == "approved")
+        blocked_count = sum(1 for l in logs if l.get(
+            "decision", "").lower() == "blocked")
+        avg_latency = round(sum(l.get("latency_ms", 5)
+                            for l in logs) / max(total_logs, 1), 1)
 
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -930,7 +929,8 @@ elif page == "🛡️ Security & Audit Trail":
             after = log.get("after_state") or {}
             rule_res = log.get("rule_results") or {}
 
-            dec_color = "#34d399" if dec == "APPROVED" else ("#f87171" if dec == "BLOCKED" else "#fbbf24")
+            dec_color = "#34d399" if dec == "APPROVED" else (
+                "#f87171" if dec == "BLOCKED" else "#fbbf24")
 
             with st.container(border=True):
                 c_top1, c_top2 = st.columns([3, 1])
@@ -962,8 +962,10 @@ elif page == "🛡️ Security & Audit Trail":
 
                 c_diff1, c_diff2 = st.columns(2)
                 with c_diff1:
-                    st.markdown("<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>Before State (Masked PII):</p>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>Before State (Masked PII):</p>", unsafe_allow_html=True)
                     st.json(before)
                 with c_diff2:
-                    st.markdown("<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>After State (Committed):</p>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>After State (Committed):</p>", unsafe_allow_html=True)
                     st.json(after)
