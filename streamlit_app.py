@@ -25,9 +25,11 @@ st.set_page_config(
 
 # Initialize Session State
 if "token" not in st.session_state:
-    st.session_state.token = "cust_1"
+    st.session_state.token = None  # set by POST /login
 if "customer_email" not in st.session_state:
-    st.session_state.customer_email = "alice@example.com"
+    st.session_state.customer_email = ""
+if "customer_name" not in st.session_state:
+    st.session_state.customer_name = ""
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "pending_change_request" not in st.session_state:
@@ -375,20 +377,52 @@ st.markdown(
 # Helper API caller
 def api_request(method: str, path: str, json_data: dict = None):
     url = f"{API_BASE_URL}{path}"
-    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+    headers = {"Authorization": f"Bearer {st.session_state.token}"} if st.session_state.token else {}
     try:
         if method.upper() == "GET":
             resp = requests.get(url, headers=headers, timeout=5)
         else:
             resp = requests.post(url, headers=headers, json=json_data, timeout=5)
+        # Token expired or invalid: drop it so the login screen shows again
+        if resp.status_code == 401 and st.session_state.token and path != "/login":
+            st.session_state.token = None
         return resp.status_code, resp.json()
     except Exception as e:
         return 500, {"error": f"Backend offline ({API_BASE_URL}). Run: python -m uvicorn main:app", "detail": str(e)}
 
 
+<<<<<<< HEAD
 # ============================================================================
 # SIDEBAR: Resolvo-inspired Navigation, History Timeline, Customer Card
 # ============================================================================
+=======
+# ---------------------------------------------------------------------------
+# Login gate: nothing else is shown until the backend issues a token (R1)
+# ---------------------------------------------------------------------------
+if not st.session_state.token:
+    st.title("Team Logic - Sign in")
+    with st.form("login_form"):
+        email = st.text_input("Email", value="alice@example.com")
+        pin = st.text_input("PIN", type="password", help="Demo PIN: 1234")
+        submitted = st.form_submit_button("Log in", type="primary")
+    if submitted:
+        code, resp = api_request("POST", "/login", {"email": email, "pin": pin})
+        if code == 200:
+            st.session_state.token = resp["access_token"]
+            st.session_state.customer_email = resp["customer_email"]
+            st.session_state.customer_name = resp["customer_name"]
+            st.rerun()
+        elif "error" in resp:  # backend unreachable
+            st.error(resp["error"])
+        elif isinstance(resp.get("detail"), str):  # 401 / 429
+            st.error(resp["detail"])
+        else:  # 422 format errors
+            st.error("Enter a valid email and a numeric PIN of 4 to 8 digits.")
+    st.stop()
+
+
+# Sidebar: brand, navigation, session & backend status
+>>>>>>> fb585ba (authentication file)
 with st.sidebar:
     st.markdown(
         """
@@ -442,6 +476,17 @@ with st.sidebar:
     )
 
     st.markdown("---")
+<<<<<<< HEAD
+=======
+    st.caption("CUSTOMER SESSION")
+    st.write(f"👤 {st.session_state.customer_name}")
+    st.write(f"📧 `{st.session_state.customer_email}`")
+    if st.button("🚪 Log out", use_container_width=True):
+        st.session_state.token = None
+        st.session_state.chat_history = []
+        st.session_state.pending_change_request = None
+        st.rerun()
+>>>>>>> fb585ba (authentication file)
 
     # Session Profile Card
     status_code, health = api_request("GET", "/health")
@@ -482,6 +527,7 @@ if page == "💬 Ask Logic":
     # 2-column layout: Main Chat (70%) + Right Guardrail/Tools Inspector (30%)
     col_main, col_tools = st.columns([7, 3], gap="medium")
 
+<<<<<<< HEAD
     with col_main:
         # Welcome Hero (shown when no prior chat)
         if not st.session_state.chat_history and not st.session_state.pending_change_request:
@@ -524,6 +570,22 @@ if page == "💬 Ask Logic":
                 )
                 if st.button("Change Address", key="act_addr", use_container_width=True):
                     st.session_state.queued_prompt = "Change shipping address for order 10023 to 12 MG Road, Pune"
+=======
+if page == "💬 Ask Agent":
+    # Welcome hero + suggestion cards, shown only on an empty conversation
+    if not st.session_state.chat_history and not st.session_state.pending_change_request:
+        st.markdown(
+            '<div class="hero"><div class="logo">✦</div>'
+            f'<div class="hello">Hello! {st.session_state.customer_name}</div>'
+            '<h1>How can I help you today?</h1></div>',
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(len(SUGGESTIONS))
+        for col, (icon, title, prompt) in zip(cols, SUGGESTIONS):
+            with col:
+                if st.button(f"{icon}\n\n{title}", key=f"sug_{title}", use_container_width=True):
+                    st.session_state.queued_prompt = prompt
+>>>>>>> fb585ba (authentication file)
                     st.rerun()
 
             with c2:
