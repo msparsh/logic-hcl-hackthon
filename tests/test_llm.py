@@ -23,8 +23,9 @@ ORDERS = [
 
 
 def settings(**overrides) -> Settings:
-    base = dict(groq_api_key="test-groq", gemini_api_key="test-gemini", pollinations_enabled=False,
-                llm_timeout_seconds=2)
+    # anthropic_api_key="" so a real key in the environment never makes a live call in tests.
+    base = dict(anthropic_api_key="", groq_api_key="test-groq", gemini_api_key="test-gemini",
+                pollinations_enabled=False, llm_timeout_seconds=2)
     base.update(overrides)
     return Settings(_env_file=None, **base)
 

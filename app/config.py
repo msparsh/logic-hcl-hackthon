@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     db_echo: bool = False  # log every SQL statement (debugging only)
 
     # --- LLM providers (tried in this order; empty key = provider skipped) ---
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-opus-5-5"
+    anthropic_effort: str = "low"  # low effort keeps replies fast for chat
+
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     groq_url: str = "https://api.groq.com/openai/v1/chat/completions"

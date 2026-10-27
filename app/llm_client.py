@@ -1,8 +1,9 @@
 """LLM client with automatic provider failover.
 
-Providers are tried in order: Groq -> Gemini -> Pollinations (keyless).
-A provider with no API key is skipped. All three expose an OpenAI-compatible
-chat-completions endpoint, so one small HTTP client covers them all.
+Providers are tried in order: Anthropic (Claude) -> Groq -> Gemini -> Pollinations
+(keyless). A provider with no API key is skipped. Claude is called through the
+official ``anthropic`` SDK; the other three expose an OpenAI-compatible
+chat-completions endpoint, so one small HTTP client covers them.
 
 If every provider fails, ``LLMError`` is raised and the caller falls back to
 deterministic code (the regex parser or a reply template). The LLM never
@@ -15,6 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import anthropic
 import httpx
 
 from app.config import Settings, get_settings
@@ -27,6 +29,7 @@ class Provider:
     model: str
     api_key: str = ""
     supports_json_mode: bool = True
+    effort: str = ""  # Claude only: how hard the model thinks (low/medium/high)
 
 
 @dataclass
@@ -50,6 +53,9 @@ def configured_providers(settings: Optional[Settings] = None) -> list[Provider]:
     """Providers that can be tried with the current settings, in priority order."""
     s = settings or get_settings()
     providers = []
+    if s.anthropic_api_key:
+        providers.append(Provider("anthropic", "", s.anthropic_model, s.anthropic_api_key,
+                                  supports_json_mode=False, effort=s.anthropic_effort))
     if s.groq_api_key:
         providers.append(Provider("groq", s.groq_url, s.groq_model, s.groq_api_key))
     if s.gemini_api_key:
@@ -63,6 +69,8 @@ def configured_providers(settings: Optional[Settings] = None) -> list[Provider]:
 def _call(provider: Provider, messages: list[dict], json_mode: bool, timeout: float,
           transport: Optional[httpx.BaseTransport]) -> str:
     """One chat-completions request. Raises on HTTP errors or an empty answer."""
+    if provider.name == "anthropic":
+        return _call_anthropic(provider, messages, timeout)
     body: dict = {"model": provider.model, "messages": messages, "temperature": 0}
     if json_mode and provider.supports_json_mode:
         body["response_format"] = {"type": "json_object"}
@@ -74,6 +82,35 @@ def _call(provider: Provider, messages: list[dict], json_mode: bool, timeout: fl
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
     if not content or not content.strip():
+        raise ValueError("empty response")
+    return content.strip()
+
+
+def _call_anthropic(provider: Provider, messages: list[dict], timeout: float) -> str:
+    """One Claude request via the Anthropic SDK. Raises on API errors or an empty answer.
+
+    Claude takes the system prompt as a separate field, so "system" messages are
+    pulled out of the list. JSON answers are asked for in our prompts and checked
+    by extract_json_object, like for the other providers.
+    """
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    turns = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] != "system"]
+    # max_retries=0: on any failure we fail over to the next provider instead of waiting.
+    client = anthropic.Anthropic(api_key=provider.api_key, timeout=timeout, max_retries=0)
+    response = client.beta.messages.create(
+        model=provider.model,
+        max_tokens=4096,
+        system=system or anthropic.omit,
+        messages=turns,
+        output_config={"effort": provider.effort},
+        # If Claude declines for safety reasons, the API retries on a fallback model.
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+    )
+    if response.stop_reason == "refusal":
+        raise ValueError("refusal")
+    content = "".join(b.text for b in response.content if b.type == "text")
+    if not content.strip():
         raise ValueError("empty response")
     return content.strip()
 
@@ -100,7 +137,7 @@ def chat(messages: list[dict], *, json_mode: bool = False, settings: Optional[Se
             latency = int((time.perf_counter() - start) * 1000)
             attempts.append({"provider": provider.name, "ok": True, "latency_ms": latency})
             return LLMResult(text, provider.name, provider.model, latency, attempts)
-        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        except (httpx.HTTPError, anthropic.APIError, KeyError, IndexError, ValueError) as exc:
             attempts.append({"provider": provider.name, "ok": False,
                              "error": _short_error(exc),
                              "latency_ms": int((time.perf_counter() - start) * 1000)})
@@ -125,6 +162,8 @@ def _short_error(exc: Exception) -> str:
     """Error summary safe for logs: status code or type, never the API key."""
     if isinstance(exc, httpx.HTTPStatusError):
         return f"HTTP {exc.response.status_code}"
-    if isinstance(exc, httpx.TimeoutException):
+    if isinstance(exc, anthropic.APIStatusError):
+        return f"HTTP {exc.status_code}"
+    if isinstance(exc, (httpx.TimeoutException, anthropic.APITimeoutError)):
         return "timeout"
     return type(exc).__name__
