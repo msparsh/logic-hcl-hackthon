@@ -16,7 +16,7 @@ import time
 from typing import Any, Dict, List, Optional
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException, Query, status
+from fastapi import FastAPI, Depends, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -367,14 +367,14 @@ IDEMPOTENCY_KEYS_SEEN: set = set()
 # ============================================================================
 
 def resolve_customer(
-    authorization: Optional[str] = Header(None),
-    x_customer_id: Optional[str] = Header(None, alias="X-Customer-ID")
+    authorization: Optional[str] = Header(default=None),
+    x_customer_id: Optional[str] = Header(default=None, alias="X-Customer-ID")
 ) -> CustomerSchema:
     """Extracts and verifies customer identity."""
     cid = 1  # Default to demo customer 1
-    if x_customer_id and x_customer_id.isdigit():
+    if x_customer_id and isinstance(x_customer_id, str) and x_customer_id.isdigit():
         cid = int(x_customer_id)
-    elif authorization and "Bearer " in authorization:
+    elif authorization and isinstance(authorization, str) and "Bearer " in authorization:
         token = authorization.split("Bearer ")[-1].strip()
         if token.startswith("cust_") and token.replace("cust_", "").isdigit():
             cid = int(token.replace("cust_", ""))
@@ -416,7 +416,7 @@ def parse_intent(text: str) -> tuple[IntentEnum, Optional[int], Optional[str]]:
 
     # Address change
     addr_match = re.search(
-        r"(?:change|update|ship to|deliver to)(?:.*?(?:address|destination))?.*?(?:to|at)\s+([A-Za-z0-9\s,\.\-\#\/]{5,})",
+        r"(?:change|update|ship to|deliver to)(?:.*?(?:address|destination))?.*?(?:to|at)\s+([A-Za-z0-9\s,\.\-\#\/]+)",
         text,
         re.IGNORECASE
     )
@@ -515,17 +515,14 @@ def login(payload: LoginRequest):
 
 
 @app.get("/orders", response_model=List[OrderSchema], tags=["Orders"])
-def list_orders(customer: CustomerSchema = Header(None)):
+def list_orders(cust: CustomerSchema = Depends(resolve_customer)):
     """List all orders for authenticated customer."""
-    # Resolve customer
-    cust = resolve_customer(x_customer_id=str(customer.customer_id) if hasattr(customer, 'customer_id') else "1")
     return [order for order in ORDERS_DB.values() if order.customer_id == cust.customer_id]
 
 
 @app.get("/orders/{order_id}", response_model=OrderSchema, tags=["Orders"])
-def get_order(order_id: int):
+def get_order(order_id: int, cust: CustomerSchema = Depends(resolve_customer)):
     """Retrieve order details with ownership verification."""
-    cust = resolve_customer()
     order = ORDERS_DB.get(order_id)
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order #{order_id} not found")
@@ -535,7 +532,7 @@ def get_order(order_id: int):
 
 
 @app.post("/chat", response_model=ChatResponse, tags=["Agent"])
-def chat(payload: ChatRequest):
+def chat(payload: ChatRequest, cust: CustomerSchema = Depends(resolve_customer)):
     """
     Processes chat message:
     - Parses intent & order number
@@ -543,7 +540,6 @@ def chat(payload: ChatRequest):
     - Creates CHANGE_REQUEST preview valid for 5 minutes
     """
     start_t = time.time()
-    cust = resolve_customer()
     trace: List[Dict[str, str]] = [{"node": "Identify", "status": f"Customer #{cust.customer_id} ({cust.email})"}]
 
     intent, extracted_id, payload_val = parse_intent(payload.message)
@@ -714,7 +710,7 @@ def chat(payload: ChatRequest):
 
 
 @app.post("/confirm", response_model=ConfirmResponse, tags=["Agent"])
-def confirm_action(payload: ConfirmRequest):
+def confirm_action(payload: ConfirmRequest, cust: CustomerSchema = Depends(resolve_customer)):
     """
     Confirm or cancel pending action:
     - Enforces idempotency key (no double execution)
@@ -722,7 +718,6 @@ def confirm_action(payload: ConfirmRequest):
     - Optimistic locking version check
     - Updates order and logs to AUDIT_LOG
     """
-    cust = resolve_customer()
     change_req = CHANGE_REQUESTS_DB.get(payload.request_id)
     if not change_req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change request not found")
@@ -820,8 +815,7 @@ def confirm_action(payload: ConfirmRequest):
 
 
 @app.get("/audit", response_model=List[AuditLogSchema], tags=["Audit & Compliance"])
-def get_audit(limit: int = Query(50, ge=1, le=100)):
+def get_audit(limit: int = Query(50, ge=1, le=100), cust: CustomerSchema = Depends(resolve_customer)):
     """Retrieve audit logs with masked addresses."""
-    cust = resolve_customer()
     logs = [log for log in AUDIT_LOG_DB if log.customer_id == cust.customer_id]
     return logs[-limit:]
