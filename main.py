@@ -284,23 +284,55 @@ def mask_sensitive_address(addr: Optional[str]) -> str:
 PRODUCTS_DB: Dict[int, ProductSchema] = {
     101: ProductSchema(
         product_id=101,
-        name="Wireless Noise-Cancelling Headphones",
+        name="Sony WH-1000XM5 Wireless Noise-Cancelling Headphones",
         category="Electronics",
         sub_category="Audio",
         article_type="Headphones",
-        base_colour="Black"
+        base_colour="Midnight Black"
     ),
     102: ProductSchema(
         product_id=102,
-        name="Mechanical Ergonomic Keyboard",
+        name="Keychron K2 Pro Mechanical Wireless Keyboard",
         category="Electronics",
         sub_category="Accessories",
         article_type="Keyboards",
-        base_colour="Silver"
+        base_colour="Space Gray"
+    ),
+    103: ProductSchema(
+        product_id=103,
+        name="Nike Air Zoom Pegasus 40 Running Shoes",
+        category="Footwear",
+        sub_category="Shoes",
+        article_type="Sports Shoes",
+        base_colour="Wolf Grey"
+    ),
+    104: ProductSchema(
+        product_id=104,
+        name="Fossil Derrick RFID Genuine Leather Wallet",
+        category="Accessories",
+        sub_category="Wallets",
+        article_type="Wallets",
+        base_colour="Dark Brown"
+    ),
+    105: ProductSchema(
+        product_id=105,
+        name="Heavyweight Organic Cotton Crewneck Tee",
+        category="Apparel",
+        sub_category="Topwear",
+        article_type="Tshirts",
+        base_colour="Classic Navy"
+    ),
+    106: ProductSchema(
+        product_id=106,
+        name="Anker 737 GaNPrime 140W Fast Power Bank",
+        category="Electronics",
+        sub_category="Power",
+        article_type="Chargers",
+        base_colour="Matte Black"
     )
 }
 
-# Seed customers
+# Seed customers (matching db/seed.sql)
 CUSTOMERS_DB: Dict[int, Dict[str, Any]] = {
     1: {
         "customer_id": 1,
@@ -311,11 +343,183 @@ CUSTOMERS_DB: Dict[int, Dict[str, Any]] = {
         "home_country": "India",
         "pin_hash": hash_pin("1234"),  # demo PIN 1234, same as db/seed.sql
         "joined_at": date(2025, 1, 15)
+    },
+    2: {
+        "customer_id": 2,
+        "first_name": "Bob",
+        "last_name": "Kumar",
+        "email": "bob@example.com",
+        "home_location": "Ahmedabad, Gujarat",
+        "home_country": "India",
+        "pin_hash": hash_pin("1234"),  # demo PIN 1234, same as db/seed.sql
+        "joined_at": date(2025, 3, 2)
     }
 }
 
-# Seed orders
+# Seed orders (comprehensive real e-commerce data)
 ORDERS_DB: Dict[int, OrderSchema] = {
+    10001: OrderSchema(
+        order_id=10001,
+        order_ref="ORD-10001",
+        booking_id="KG-984201",
+        customer_id=1,
+        created_at=utc_now() - timedelta(hours=14),
+        payment_method="Credit Card",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.PLACED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() + timedelta(days=4),
+        promo_code="SPRING10",
+        promo_amount=Decimal("150.00"),
+        shipment_fee=Decimal("50.00"),
+        total_amount=Decimal("849.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(hours=12),
+        items=[
+            OrderItemSchema(
+                order_id=10001,
+                product_id=105,
+                quantity=1,
+                item_price=Decimal("849.00"),
+                product=PRODUCTS_DB[105]
+            )
+        ]
+    ),
+    10002: OrderSchema(
+        order_id=10002,
+        order_ref="ORD-10002",
+        booking_id="KG-984202",
+        customer_id=1,
+        created_at=utc_now() - timedelta(days=3),
+        payment_method="UPI",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.SHIPPED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() + timedelta(days=1),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("0.00"),
+        total_amount=Decimal("2499.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(days=1),
+        items=[
+            OrderItemSchema(
+                order_id=10002,
+                product_id=103,
+                quantity=1,
+                item_price=Decimal("2499.00"),
+                product=PRODUCTS_DB[103]
+            )
+        ]
+    ),
+    10003: OrderSchema(
+        order_id=10003,
+        order_ref="ORD-10003",
+        booking_id="KG-984203",
+        customer_id=1,
+        created_at=utc_now() - timedelta(days=10),
+        payment_method="Debit Card",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.DELIVERED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() - timedelta(days=5),
+        promo_code="WELCOME10",
+        promo_amount=Decimal("100.00"),
+        shipment_fee=Decimal("50.00"),
+        total_amount=Decimal("1349.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(days=5),
+        items=[
+            OrderItemSchema(
+                order_id=10003,
+                product_id=101,
+                quantity=1,
+                item_price=Decimal("1349.00"),
+                product=PRODUCTS_DB[101]
+            )
+        ]
+    ),
+    10004: OrderSchema(
+        order_id=10004,
+        order_ref="ORD-10004",
+        booking_id="KG-984204",
+        customer_id=1,
+        created_at=utc_now() - timedelta(days=6),
+        payment_method="UPI",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.CANCELLED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() + timedelta(days=2),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("0.00"),
+        total_amount=Decimal("599.00"),
+        version=2,
+        updated_at=utc_now() - timedelta(days=5),
+        items=[
+            OrderItemSchema(
+                order_id=10004,
+                product_id=104,
+                quantity=1,
+                item_price=Decimal("599.00"),
+                product=PRODUCTS_DB[104]
+            )
+        ]
+    ),
+    10005: OrderSchema(
+        order_id=10005,
+        order_ref="ORD-10005",
+        booking_id="KG-984205",
+        customer_id=1,
+        created_at=utc_now() - timedelta(hours=2),
+        payment_method="Credit Card",
+        payment_status=PaymentStatusEnum.FAILED,
+        status=OrderStatusEnum.PLACED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() + timedelta(days=5),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("50.00"),
+        total_amount=Decimal("1899.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(hours=2),
+        items=[
+            OrderItemSchema(
+                order_id=10005,
+                product_id=106,
+                quantity=1,
+                item_price=Decimal("1849.00"),
+                product=PRODUCTS_DB[106]
+            )
+        ]
+    ),
+    10006: OrderSchema(
+        order_id=10006,
+        order_ref="ORD-10006",
+        booking_id="KG-984206",
+        customer_id=2,  # Bob Kumar's order
+        created_at=utc_now() - timedelta(days=1),
+        payment_method="UPI",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.PLACED,
+        shipping_address="21 CG Road, Navrangpura, Ahmedabad, GJ 380009",
+        delivery_date=date.today() + timedelta(days=3),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("50.00"),
+        total_amount=Decimal("749.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(days=1),
+        items=[
+            OrderItemSchema(
+                order_id=10006,
+                product_id=104,
+                quantity=1,
+                item_price=Decimal("699.00"),
+                product=PRODUCTS_DB[104]
+            )
+        ]
+    ),
     10023: OrderSchema(
         order_id=10023,
         order_ref="ORD-10023",
@@ -374,9 +578,22 @@ ORDERS_DB: Dict[int, OrderSchema] = {
 
 # Tables
 CHANGE_REQUESTS_DB: Dict[str, ChangeRequestSchema] = {}
-AUDIT_LOG_DB: List[AuditLogSchema] = []
+AUDIT_LOG_DB: List[AuditLogSchema] = [
+    AuditLogSchema(
+        audit_id=1,
+        request_id="seed-audit-0001",
+        customer_id=1,
+        order_id=10004,
+        action="cancel_order",
+        decision=AuditDecisionEnum.APPROVED,
+        rule_results={"ownership": True, "status_eligible": True, "refund_issued": True},
+        before_state={"status": "placed", "shipping_address": mask_sensitive_address("4 Park Street, Flat 3B, Pune, MH 411001")},
+        after_state={"status": "cancelled", "shipping_address": mask_sensitive_address("4 Park Street, Flat 3B, Pune, MH 411001")},
+        latency_ms=12,
+        created_at=utc_now() - timedelta(days=5)
+    )
+]
 IDEMPOTENCY_KEYS_SEEN: set = set()
-
 
 # ============================================================================
 # 4. Helper Functions: Intent Extraction & Security Guardrails
@@ -415,7 +632,7 @@ def extract_order_id(text: str) -> Optional[int]:
     num_match = re.search(r"(?:order\s*(?:#|id)?\s*|#\s*)(\d{3,8})", text, re.IGNORECASE)
     if num_match:
         return int(num_match.group(1))
-    standalone = re.search(r"\b(1002[3-9]|102[3-9])\b", text)
+    standalone = re.search(r"\b(1000[1-9]|1002[0-9]|102[0-9]|\d{5})\b", text)
     if standalone:
         return int(standalone.group(1))
     return None
@@ -856,6 +1073,12 @@ def get_me(cust: CustomerSchema = Depends(resolve_customer)):
     return cust
 
 
+
+@app.get("/products", response_model=List[ProductSchema], tags=["Catalog"])
+def list_products():
+    """List all catalog products."""
+    return list(PRODUCTS_DB.values())
+
 @app.get("/orders", response_model=List[OrderSchema], tags=["Orders"])
 def list_orders(cust: CustomerSchema = Depends(resolve_customer)):
     """List all orders for authenticated customer."""
@@ -946,6 +1169,27 @@ def chat(payload: ChatRequest, cust: CustomerSchema = Depends(resolve_customer))
             )
             return ChatResponse(
                 reply=f"You do not have permission to view or modify Order #{target_id}.",
+                intent=intent,
+                extracted_order_id=target_id,
+                needs_confirmation=False,
+                trace=trace
+            )
+
+        
+        # Payment Status Guardrail (R5): address changes blocked if payment failed
+        if intent == IntentEnum.CHANGE_ADDRESS and order.payment_status == PaymentStatusEnum.FAILED:
+            err_msg = f"Cannot change shipping address because payment for order #{order.order_ref} failed."
+            record_audit(
+                customer_id=cust.customer_id,
+                order_id=target_id,
+                action=intent.value,
+                decision=AuditDecisionEnum.BLOCKED,
+                rule_results={"payment_check": False, "payment_status": order.payment_status.value},
+                before_state={"payment_status": order.payment_status.value},
+                after_state={}
+            )
+            return ChatResponse(
+                reply=err_msg,
                 intent=intent,
                 extracted_order_id=target_id,
                 needs_confirmation=False,

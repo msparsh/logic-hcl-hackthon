@@ -53,7 +53,7 @@ def _extract_order_id(text: str) -> Optional[int]:
     match = re.search(r"\border\s*(?:#|id)?\s*(\d{3,8})\b|#\s*(\d{3,8})\b", text, re.IGNORECASE)
     if match:
         return int(match.group(1) or match.group(2))
-    match = re.search(r"\b(1002[3-9]|102[3-9])\b", text)
+    match = re.search(r"\b(1000[1-9]|1002[0-9]|102[0-9]|\d{5})\b", text)
     return int(match.group(1)) if match else None
 
 
