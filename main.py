@@ -11,6 +11,7 @@ Strictly validated using Pydantic models matching the database ER schema:
 from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
+import random
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -1093,6 +1094,66 @@ def get_order(order_id: int, cust: CustomerSchema = Depends(resolve_customer)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order #{order_id} not found")
     if order.customer_id != cust.customer_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized access to order")
+    return order
+
+
+class CreateOrderRequest(BaseModel):
+    product_id: int
+    quantity: int = Field(default=1, ge=1)
+    shipping_address: Optional[str] = None
+
+
+@app.post("/orders", response_model=OrderSchema, status_code=status.HTTP_201_CREATED, tags=["Orders"])
+def create_order(payload: CreateOrderRequest, cust: CustomerSchema = Depends(resolve_customer)):
+    """Place a new order for the authenticated customer."""
+    product = PRODUCTS_DB.get(payload.product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product #{payload.product_id} not found")
+
+    next_id = max(ORDERS_DB.keys(), default=10000) + 1
+    order_ref = f"ORD-{next_id}"
+
+    product_prices = {
+        101: Decimal("24990.00"),
+        102: Decimal("8499.00"),
+        103: Decimal("9995.00"),
+        104: Decimal("3495.00"),
+        105: Decimal("1299.00"),
+        106: Decimal("11999.00"),
+    }
+    price = product_prices.get(payload.product_id, Decimal("2999.00"))
+    total = price * payload.quantity
+
+    shipping_addr = payload.shipping_address
+    if not shipping_addr:
+        existing = [o.shipping_address for o in ORDERS_DB.values() if o.customer_id == cust.customer_id]
+        shipping_addr = existing[0] if existing else f"{cust.home_location or 'Main Road'}, {cust.home_country or 'India'}"
+
+    order = OrderSchema(
+        order_id=next_id,
+        order_ref=order_ref,
+        booking_id=f"KG-{random.randint(100000, 999999)}",
+        customer_id=cust.customer_id,
+        created_at=utc_now(),
+        payment_method="Credit Card",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.PLACED,
+        shipping_address=shipping_addr,
+        delivery_date=date.today() + timedelta(days=3),
+        total_amount=total,
+        version=1,
+        updated_at=utc_now(),
+        items=[
+            OrderItemSchema(
+                order_id=next_id,
+                product_id=product.product_id,
+                quantity=payload.quantity,
+                item_price=price,
+                product=product
+            )
+        ]
+    )
+    ORDERS_DB[next_id] = order
     return order
 
 

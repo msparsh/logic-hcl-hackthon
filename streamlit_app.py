@@ -44,7 +44,7 @@ if "pending_change_request" not in st.session_state:
 if "queued_prompt" not in st.session_state:
     st.session_state.queued_prompt = None
 if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "📦 My Orders & Tracking"
+    st.session_state.active_tab = "💬 Order Support Desk"
 
 # ---------------------------------------------------------------------------
 # High-Fidelity Enterprise Dark Theme CSS
@@ -406,8 +406,7 @@ with st.sidebar:
     st.markdown("<p style='font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.08em; text-transform:uppercase; margin-top:1.2rem; margin-bottom:0.5rem;'>PORTAL NAVIGATION</p>", unsafe_allow_html=True)
     page = st.radio(
         "Navigation",
-        ["📦 My Orders & Tracking", "💬 Order Support Desk",
-            "🛍️ Store Catalog", "🛡️ Security & Audit Trail"],
+        ["💬 Order Support Desk", "📦 My Orders & Tracking", "🛍️ Store Catalog"],
         label_visibility="collapsed",
     )
 
@@ -435,16 +434,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Session Profile Card
-    status_code, health = api_request("GET", "/health")
-    backend_online = (status_code == 200)
-    initials = "".join(w[0] for w in st.session_state.customer_name.split()[
-                       :2]).upper() or "?"
-
-# ============================================================================
-# PAGE 1: 📦 My Orders & Tracking (Real E-Commerce Order Management)
-# ============================================================================
-if page == "📦 My Orders & Tracking":
+    # Session Profile Card in Sidebar
+    initials = "".join(w[0] for w in st.session_state.customer_name.split()[:2]).upper() or "?"
     st.markdown(
         f"""
         <div style="background:#151822; border:1px solid #232838; border-radius:10px; padding:0.75rem; margin-bottom:0.7rem;">
@@ -455,27 +446,16 @@ if page == "📦 My Orders & Tracking":
                     <div style="font-size:0.7rem; color:#94a3b8;">{st.session_state.customer_email}</div>
                 </div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem; font-size:0.7rem;">
-                <span style="color:#64748b;">Backend Status:</span>
-                <span style="color:{'#34d399' if backend_online else '#f87171'}; font-weight:600;">
-                    {'● FastAPI 8000 Online' if backend_online else '○ Offline'}
-                </span>
-            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    col_btn1, col_btn2 = st.columns([1, 4])
-    with col_btn1:
-        if st.button("🔄 Refresh Orders", use_container_width=True):
-            st.rerun()
-
-    # Logout: drop the token and all per-user state, which returns to the login screen
     if st.button("🚪 Log out", use_container_width=True):
         st.session_state.token = None
         st.session_state.customer_email = ""
         st.session_state.customer_name = ""
+        st.session_state.customer_id = None
         st.session_state.chat_history = []
         st.session_state.pending_change_request = None
         st.session_state.queued_prompt = None
@@ -483,74 +463,310 @@ if page == "📦 My Orders & Tracking":
 
 
 # ============================================================================
-# PAGE 1: 💬 Ask Logic (Conversational Agent with Hero & Right Tools Panel)
+# PAGE 1: 💬 Order Support Desk (Autonomous Conversational Agent)
 # ============================================================================
-if page == "💬 Ask Logic":
-    # 2-column layout: Main Chat (70%) + Right Guardrail/Tools Inspector (30%)
-    col_main, col_tools = st.columns([7, 3], gap="medium")
+if page == "💬 Order Support Desk":
+    st.markdown(
+        """
+        <div style="margin-bottom:1.5rem;">
+            <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">Customer Order Support Desk</h1>
+            <p style="color:#94a3b8; font-size:0.88rem; margin:0;">
+                Chat naturally to update delivery addresses, cancel orders, or track shipments. Governed by deterministic business rules and safety guardrails.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    with col_main:
-        # Welcome Hero (shown when no prior chat)
-        if not st.session_state.chat_history and not st.session_state.pending_change_request:
-            st.markdown(
-                f"""
-                <div class="hero-wrap">
-                    <div class="hero-logo-box">🤖</div>
-                    <div class="hero-hello">Hello! {st.session_state.customer_name}</div>
-                    <div class="hero-heading">How can I help you today?</div>
+    # Quick Inquiries Bar
+    st.markdown("<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Quick Customer Inquiries:</p>", unsafe_allow_html=True)
+    q1, q2, q3, q4 = st.columns(4)
+    with q1:
+        if st.button("📍 Change Address (#10001)", use_container_width=True):
+            st.session_state.queued_prompt = "Change shipping address for order 10001 to 12 MG Road, Pune"
+            st.rerun()
+    with q2:
+        if st.button("🚚 Track Shipment (#10002)", use_container_width=True):
+            st.session_state.queued_prompt = "Track order 10002"
+            st.rerun()
+    with q3:
+        if st.button("❌ Cancel Order (#10001)", use_container_width=True):
+            st.session_state.queued_prompt = "Cancel order 10001"
+            st.rerun()
+    with q4:
+        if st.button("🛡️ Test Shipped Block (#10002)", use_container_width=True):
+            st.session_state.queued_prompt = "Change shipping address for order 10002 to 55 Lake Road"
+            st.rerun()
+
+    st.markdown("---")
+
+    # Render Chat Stream
+    if not st.session_state.chat_history:
+        st.info("👋 Welcome! You can ask questions about your orders, request an address update before courier dispatch, or track delivery status.")
+
+    for msg in st.session_state.chat_history:
+        role = msg.get("role", "assistant")
+        avatar = "👤" if role == "user" else "🛍️"
+        with st.chat_message(role, avatar=avatar):
+            st.markdown(msg.get("content", ""))
+            trace = msg.get("trace")
+            if trace:
+                with st.expander("🔍 Guardrail Decision & Latency Trace", expanded=False):
+                    for step in trace:
+                        node = step.get("node", "Checkpoint")
+                        stat = step.get("status", "OK")
+                        color = "#34d399" if any(w in stat.lower() for w in [
+                                                 "success", "ok", "customer", "intent"]) else "#fbbf24"
+                        st.markdown(
+                            f"- **{node}**: <span style='color:{color}; font-weight:600;'>{stat}</span>", unsafe_allow_html=True)
+
+    # Render Pending State Modification Confirmation Review Box
+    if st.session_state.pending_change_request:
+        cr = st.session_state.pending_change_request
+        order_target = cr.get("order_id")
+        intent_val = cr.get("intent")
+        curr_state = cr.get("preview", {}).get("current")
+        new_state = cr.get("preview", {}).get("new")
+
+        st.markdown(
+            f"""
+            <div class="review-box">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.7rem;">
+                    <span style="font-size:1rem; font-weight:800; color:#fbbf24;">
+                        ⚠️ Confirmation Required: Proposed Order Modification
+                    </span>
+                    <span style="font-size:0.75rem; background:#1e293b; color:#94a3b8; padding:3px 10px; border-radius:999px;">
+                        Valid for 5 minutes
+                    </span>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Top Pill Chips
-            st.markdown(
-                """
-                <div class="pill-group">
-                    <span class="badge-pill">📍 Order Address Guardrails ✕</span>
-                    <span class="badge-pill">🚚 Live Package Tracking ✕</span>
-                    <span class="badge-pill">🛡️ Strict PII Masking ✕</span>
-                    <span class="badge-pill">⚡ Immutable Audit Ledger ✕</span>
+                <div style="font-size:0.85rem; color:#cbd5e1; margin-bottom:0.9rem;">
+                    The agent verified that <b>Order #{order_target}</b> is eligible for modification. Review the state change before writing to the database:
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            # 4 Pro Action Cards in a 4-column row
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.markdown(
-                    """
-                    <div class="pro-card">
-                        <div class="card-icon-badge badge-red">📍</div>
-                        <div class="card-title">Modify Address</div>
-                        <div class="card-desc">Safely change shipping address before courier dispatch cutoff.</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button("Change Address", key="act_addr", use_container_width=True):
-                    st.session_state.queued_prompt = "Change shipping address for order 10023 to 12 MG Road, Pune"
-                    st.rerun()
+        d_col1, d_col2 = st.columns(2)
+        with d_col1:
+            st.markdown("**Current State in Database:**")
+            st.code(json.dumps(
+                {"order_id": order_target, "state": curr_state}, indent=2), language="json")
+        with d_col2:
+            st.markdown("**Proposed State to Commit:**")
+            st.code(json.dumps(
+                {"order_id": order_target, "state": new_state}, indent=2), language="json")
 
-            with c2:
-                st.markdown(
-                    """
-                    <div class="pro-card">
-                        <div class="card-icon-badge badge-green">🚚</div>
-                        <div class="card-title">Track Orders</div>
-                        <div class="card-desc">Inspect real-time order status, fulfillment stage & estimated delivery.</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button("Track #10023", key="act_track", use_container_width=True):
-                    st.session_state.queued_prompt = "Track order 10023"
-                    st.rerun()
+        c_confirm, c_decline = st.columns(2)
+        with c_confirm:
+            if st.button("✅ Confirm & Apply Changes", type="primary", use_container_width=True):
+                s_code, resp = api_request("POST", "/confirm", {
+                    "request_id": cr["request_id"],
+                    "action": "confirm",
+                    "idempotency_key": cr["idempotency_key"]
+                })
+                if s_code == 200:
+                    msg = resp.get(
+                        "message", "Order successfully updated in database.")
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": f"✅ **Confirmed & Applied:** {msg}"})
+                    st.toast(
+                        "Database updated and audit trail recorded!", icon="✅")
+                else:
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
+                st.session_state.pending_change_request = None
+                st.rerun()
+
+        with c_decline:
+            if st.button("✕ Decline & Discard", use_container_width=True):
+                api_request("POST", "/confirm", {
+                    "request_id": cr["request_id"],
+                    "action": "cancel",
+                    "idempotency_key": cr["idempotency_key"]
+                })
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": "❌ Change request declined and discarded."})
+                st.session_state.pending_change_request = None
+                st.rerun()
+
+    # Chat Input Box
+    user_msg = st.chat_input(
+        "Ask a question or enter an order instruction...") or st.session_state.queued_prompt
+    st.session_state.queued_prompt = None
+
+    if user_msg:
+        st.session_state.chat_history.append(
+            {"role": "user", "content": user_msg})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(user_msg)
+
+        with st.chat_message("assistant", avatar="🛍️"):
+            with st.spinner("Processing request and verifying security guardrails..."):
+                status_code, resp = api_request(
+                    "POST", "/chat", {"message": user_msg})
+
+            if status_code == 200:
+                reply = resp.get("reply", "")
+                st.markdown(reply)
+
+                if resp.get("needs_confirmation") and resp.get("change_request"):
+                    st.session_state.pending_change_request = resp["change_request"]
+
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": reply,
+                    "trace": resp.get("trace", [])
+                })
+                st.rerun()
+            else:
+                err = resp.get(
+                    "detail", "Error communicating with backend.")
+                st.error(err)
+                st.session_state.chat_history.append(
+                    {"role": "assistant", "content": f"⚠️ {err}"})
+
+
+# ============================================================================
+# PAGE 2: 📦 My Orders & Tracking (Real E-Commerce Order Management)
+# ============================================================================
+elif page == "📦 My Orders & Tracking":
+    col_hdr, col_btn = st.columns([5, 1])
+    with col_hdr:
+        st.markdown(
+            """
+            <div style="margin-bottom:1.5rem;">
+                <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">My Orders & Tracking</h1>
+                <p style="color:#94a3b8; font-size:0.88rem; margin:0;">View active and past shipments, line items, and delivery status.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col_btn:
+        if st.button("🔄 Refresh Orders", use_container_width=True):
+            st.rerun()
+
+    status_code, orders = api_request("GET", "/orders")
+
+    if status_code != 200 or not isinstance(orders, list):
+        st.error("Failed to load orders from backend. Make sure FastAPI is running on port 8000.")
+    elif len(orders) == 0:
+        st.info("No orders found for your account.")
+    else:
+        for o in orders:
+            order_id = o.get("order_id")
+            order_ref = o.get("order_ref", f"ORD-{order_id}")
+            status_val = o.get("status", "placed").lower()
+            pay_status = o.get("payment_status", "Success")
+            pay_method = o.get("payment_method", "Credit Card")
+            total = o.get("total_amount", "0.00")
+            ship_addr = o.get("shipping_address", "N/A")
+            delivery_date = o.get("delivery_date", "TBD")
+            items = o.get("items", [])
+            version = o.get("version", 1)
+
+            # Determine visual badge class
+            if status_val == "placed":
+                badge_html = '<span class="status-badge status-placed">● Placed & Verified</span>'
+                step_idx = 1
+            elif status_val == "shipped":
+                badge_html = '<span class="status-badge status-shipped">🚚 In Transit (Dispatched)</span>'
+                step_idx = 2
+            elif status_val == "delivered":
+                badge_html = '<span class="status-badge status-delivered">✅ Delivered</span>'
+                step_idx = 3
+            elif status_val == "cancelled":
+                badge_html = '<span class="status-badge status-cancelled">❌ Cancelled & Refunded</span>'
+                step_idx = 0
+            else:
+                badge_html = f'<span class="status-badge status-placed">{status_val.upper()}</span>'
+                step_idx = 1
+
+            if pay_status == "Failed":
+                badge_html += ' <span class="status-badge status-failed">⚠️ Payment Failed</span>'
+
+            # Order Card
+            with st.container(border=True):
+                # Header row
+                c_title, c_meta = st.columns([3, 2])
+                with c_title:
+                    st.markdown(
+                        f"""
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
+                            <span style="font-size:1.25rem; font-weight:800; color:#ffffff;">Order #{order_ref}</span>
+                            {badge_html}
+                        </div>
+                        <div style="font-size:0.78rem; color:#64748b;">
+                            Booking Ref: <code>{o.get('booking_id', 'N/A')}</code> · DB Version: <b>v{version}</b> · Payment: <b>{pay_method} ({pay_status})</b>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with c_meta:
+                    st.markdown(
+                        f"""
+                        <div style="text-align:right;">
+                            <div style="font-size:1.35rem; font-weight:800; color:#34d399;">₹{float(total):,.2f}</div>
+                            <div style="font-size:0.75rem; color:#94a3b8;">Est. Delivery: <b>{delivery_date}</b></div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                # Visual Delivery Tracker Timeline (if not cancelled)
+                if status_val != "cancelled":
+                    st.markdown(
+                        f"""
+                        <div class="timeline-bar">
+                            <div class="timeline-step">
+                                <div class="timeline-dot dot-done"></div>
+                                <span style="color:#10b981;">1. Placed</span>
+                            </div>
+                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 1 else '#334155'}; margin:0 8px -18px;"></div>
+                            <div class="timeline-step">
+                                <div class="timeline-dot {'dot-done' if step_idx >= 2 else ('dot-current' if step_idx == 1 else 'dot-pending')}"></div>
+                                <span style="color:{'#10b981' if step_idx >= 2 else ('#60a5fa' if step_idx == 1 else '#64748b')};">2. Confirmed</span>
+                            </div>
+                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 2 else '#334155'}; margin:0 8px -18px;"></div>
+                            <div class="timeline-step">
+                                <div class="timeline-dot {'dot-done' if step_idx >= 3 else ('dot-current' if step_idx == 2 else 'dot-pending')}"></div>
+                                <span style="color:{'#10b981' if step_idx >= 3 else ('#60a5fa' if step_idx == 2 else '#64748b')};">3. In Transit</span>
+                            </div>
+                            <div style="flex:1; height:2px; background:{'#10b981' if step_idx >= 3 else '#334155'}; margin:0 8px -18px;"></div>
+                            <div class="timeline-step">
+                                <div class="timeline-dot {'dot-done' if step_idx >= 3 else 'dot-pending'}"></div>
+                                <span style="color:{'#10b981' if step_idx >= 3 else '#64748b'};">4. Delivered</span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                # Items and Shipping details
+                col_items, col_shipping = st.columns([3, 2])
+                with col_items:
+                    st.markdown("<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Package Line Items:</p>", unsafe_allow_html=True)
+                    for it in items:
+                        prod = it.get("product") or {}
+                        qty = it.get("quantity", 1)
+                        price = it.get("item_price", "0.00")
+                        st.markdown(
+                            f"""
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:#161925; border:1px solid #202638; border-radius:8px; padding:0.55rem 0.8rem; margin-bottom:0.35rem; font-size:0.82rem;">
+                                <div>
+                                    <span style="font-weight:600; color:#f1f5f9;">{prod.get('name', 'Product Item')}</span>
+                                    <span style="color:#64748b; font-size:0.75rem; margin-left:6px;">({prod.get('base_colour', '')} · {prod.get('article_type', '')})</span>
+                                </div>
+                                <div style="font-weight:700; color:#e2e8f0;">
+                                    {qty} × ₹{float(price):,.2f}
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
                 with col_shipping:
-                    st.markdown(
-                        "<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Destination Shipping Address:</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='font-size:0.8rem; font-weight:700; color:#94a3b8; margin:0.4rem 0;'>Destination Shipping Address:</p>", unsafe_allow_html=True)
                     st.markdown(
                         f"""
                         <div style="background:#161925; border:1px solid #202638; border-radius:8px; padding:0.65rem 0.8rem; font-size:0.82rem;">
@@ -564,243 +780,29 @@ if page == "💬 Ask Logic":
                     )
 
                 # Quick action buttons
-                st.markdown("<div style='height:4px;'></div>",
-                            unsafe_allow_html=True)
+                st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
                 b1, b2, b3, _ = st.columns([1.5, 1.5, 1.5, 3])
                 with b1:
                     if status_val == "placed" and pay_status != "Failed":
                         if st.button("📍 Change Address", key=f"btn_addr_{order_id}", use_container_width=True):
                             st.session_state.queued_prompt = f"Change shipping address for order {order_id} to 12 MG Road, Pune"
-                            st.toast(
-                                "Address change loaded in Support Desk! Switch to 'Order Support Desk' to confirm.", icon="📍")
+                            st.toast("Address change loaded in Support Desk! Switch to 'Order Support Desk' to confirm.", icon="📍")
                     else:
-                        st.button("📍 Change Address", key=f"btn_addr_dis_{order_id}", disabled=True,
-                                  help="Address modification locked (Only allowed for placed, paid orders)")
+                        st.button("📍 Change Address", key=f"btn_addr_dis_{order_id}", disabled=True, help="Address modification locked (Only allowed for placed, paid orders)")
 
                 with b2:
                     if status_val == "placed":
                         if st.button("❌ Cancel Order", key=f"btn_canc_{order_id}", use_container_width=True):
                             st.session_state.queued_prompt = f"Cancel order {order_id}"
-                            st.toast(
-                                "Cancellation loaded in Support Desk!", icon="❌")
+                            st.toast("Cancellation loaded in Support Desk!", icon="❌")
                     else:
-                        st.button("❌ Cancel Order", key=f"btn_canc_dis_{order_id}", disabled=True,
-                                  help="Cancellation locked (Only allowed for placed orders)")
+                        st.button("❌ Cancel Order", key=f"btn_canc_dis_{order_id}", disabled=True, help="Cancellation locked (Only allowed for placed orders)")
 
                 with b3:
                     if st.button("💬 Support Inquire", key=f"btn_supp_{order_id}", use_container_width=True):
                         st.session_state.queued_prompt = f"Track order {order_id}"
-                        st.toast(
-                            "Loaded tracking inquiry into Support Desk!", icon="💬")
+                        st.toast("Loaded tracking inquiry into Support Desk!", icon="💬")
 
-
-# ============================================================================
-# PAGE 2: 💬 Order Support Desk (Integrated Autonomous Agent with Guardrails)
-# ============================================================================
-elif page == "💬 Order Support Desk":
-    st.markdown(
-        """
-        <div style="margin-bottom:1.5rem;">
-            <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">Customer Order Support Desk</h1>
-            <p style="color:#94a3b8; font-size:0.88rem; margin:0;">
-                Chat naturally to update delivery addresses, cancel orders, or track shipments. Governed by deterministic business rules and safety guardrails.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    col_chat, col_guardrails = st.columns([7, 3], gap="large")
-
-    with col_chat:
-        # Quick Inquiries Bar
-        st.markdown("<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Quick Customer Inquiries:</p>", unsafe_allow_html=True)
-        q1, q2, q3, q4 = st.columns(4)
-        with q1:
-            if st.button("📍 Change Address (#10001)", use_container_width=True):
-                st.session_state.queued_prompt = "Change shipping address for order 10001 to 12 MG Road, Pune"
-                st.rerun()
-        with q2:
-            if st.button("🚚 Track Shipment (#10002)", use_container_width=True):
-                st.session_state.queued_prompt = "Track order 10002"
-                st.rerun()
-        with q3:
-            if st.button("❌ Cancel Order (#10001)", use_container_width=True):
-                st.session_state.queued_prompt = "Cancel order 10001"
-                st.rerun()
-        with q4:
-            if st.button("🛡️ Test Shipped Block (#10002)", use_container_width=True):
-                st.session_state.queued_prompt = "Change shipping address for order 10002 to 55 Lake Road"
-                st.rerun()
-
-        st.markdown("---")
-
-        # Render Chat Stream
-        if not st.session_state.chat_history:
-            st.info("👋 Welcome! You can ask questions about your orders, request an address update before courier dispatch, or track delivery status.")
-
-        for msg in st.session_state.chat_history:
-            role = msg.get("role", "assistant")
-            avatar = "👤" if role == "user" else "🛍️"
-            with st.chat_message(role, avatar=avatar):
-                st.markdown(msg.get("content", ""))
-                trace = msg.get("trace")
-                if trace:
-                    with st.expander("🔍 Guardrail Decision & Latency Trace", expanded=False):
-                        for step in trace:
-                            node = step.get("node", "Checkpoint")
-                            stat = step.get("status", "OK")
-                            color = "#34d399" if any(w in stat.lower() for w in [
-                                                     "success", "ok", "customer", "intent"]) else "#fbbf24"
-                            st.markdown(
-                                f"- **{node}**: <span style='color:{color}; font-weight:600;'>{stat}</span>", unsafe_allow_html=True)
-
-        # Render Pending State Modification Confirmation Review Box
-        if st.session_state.pending_change_request:
-            cr = st.session_state.pending_change_request
-            order_target = cr.get("order_id")
-            intent_val = cr.get("intent")
-            curr_state = cr.get("preview", {}).get("current")
-            new_state = cr.get("preview", {}).get("new")
-
-            st.markdown(
-                f"""
-                <div class="review-box">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.7rem;">
-                        <span style="font-size:1rem; font-weight:800; color:#fbbf24;">
-                            ⚠️ Confirmation Required: Proposed Order Modification
-                        </span>
-                        <span style="font-size:0.75rem; background:#1e293b; color:#94a3b8; padding:3px 10px; border-radius:999px;">
-                            Valid for 5 minutes
-                        </span>
-                    </div>
-                    <div style="font-size:0.85rem; color:#cbd5e1; margin-bottom:0.9rem;">
-                        The agent verified that <b>Order #{order_target}</b> is eligible for modification. Review the state change before writing to the database:
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            d_col1, d_col2 = st.columns(2)
-            with d_col1:
-                st.markdown("**Current State in Database:**")
-                st.code(json.dumps(
-                    {"order_id": order_target, "state": curr_state}, indent=2), language="json")
-            with d_col2:
-                st.markdown("**Proposed State to Commit:**")
-                st.code(json.dumps(
-                    {"order_id": order_target, "state": new_state}, indent=2), language="json")
-
-            c_confirm, c_decline = st.columns(2)
-            with c_confirm:
-                if st.button("✅ Confirm & Apply Changes", type="primary", use_container_width=True):
-                    s_code, resp = api_request("POST", "/confirm", {
-                        "request_id": cr["request_id"],
-                        "action": "confirm",
-                        "idempotency_key": cr["idempotency_key"]
-                    })
-                    if s_code == 200:
-                        msg = resp.get(
-                            "message", "Order successfully updated in database.")
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"✅ **Confirmed & Applied:** {msg}"})
-                        st.toast(
-                            "Database updated and audit trail recorded!", icon="✅")
-                    else:
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
-                    st.session_state.pending_change_request = None
-                    st.rerun()
-
-            with c_decline:
-                if st.button("✕ Decline & Discard", use_container_width=True):
-                    api_request("POST", "/confirm", {
-                        "request_id": cr["request_id"],
-                        "action": "cancel",
-                        "idempotency_key": cr["idempotency_key"]
-                    })
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": "❌ Change request declined and discarded."})
-                    st.session_state.pending_change_request = None
-                    st.rerun()
-
-        # Chat Input Box
-        user_msg = st.chat_input(
-            "Ask a question or enter an order instruction...") or st.session_state.queued_prompt
-        st.session_state.queued_prompt = None
-
-        if user_msg:
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_msg})
-            with st.chat_message("user", avatar="👤"):
-                st.markdown(user_msg)
-
-            with st.chat_message("assistant", avatar="🛍️"):
-                with st.spinner("Processing request and verifying security guardrails..."):
-                    status_code, resp = api_request(
-                        "POST", "/chat", {"message": user_msg})
-
-                if status_code == 200:
-                    reply = resp.get("reply", "")
-                    st.markdown(reply)
-
-                    if resp.get("needs_confirmation") and resp.get("change_request"):
-                        st.session_state.pending_change_request = resp["change_request"]
-
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": reply,
-                        "trace": resp.get("trace", [])
-                    })
-                    st.rerun()
-                else:
-                    err = resp.get(
-                        "detail", "Error communicating with backend.")
-                    st.error(err)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": f"⚠️ {err}"})
-
-    with col_guardrails:
-        st.markdown(
-            """
-            <div style="background:#131520; border:1px solid #1f2334; border-radius:12px; padding:1.1rem; margin-bottom:1rem;">
-                <div style="font-weight:700; font-size:0.95rem; color:#f8fafc; margin-bottom:0.4rem;">
-                    🛡️ Enforcement Guardrails
-                </div>
-                <div style="font-size:0.75rem; color:#94a3b8; line-height:1.4;">
-                    Every customer mutation is verified by deterministic business logic before altering database records.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        guardrails_spec = [
-            ("R1: Customer Authentication",
-             "JWT Bearer identity validation (no chat text spoofing)", "#34d399"),
-            ("R2: Tenant Ownership Isolation",
-             "Orders filtered by authenticated customer ID", "#34d399"),
-            ("R3/R4: Fulfillment Cutoff Check",
-             "Shipped & delivered orders are immutable", "#fbbf24"),
-            ("R5: Payment Verification Check",
-             "Failed payment orders cannot alter address", "#fb7185"),
-            ("R8/R9: 2-Phase Confirmation TTL",
-             "5-minute preview window with idempotency locks", "#60a5fa"),
-            ("R10: PII Masked Audit Trail",
-             "Addresses automatically redacted in compliance logs", "#a78bfa"),
-        ]
-
-        for title, desc, color in guardrails_spec:
-            st.markdown(
-                f"""
-                <div style="background:#151824; border:1px solid #202638; border-radius:10px; padding:0.65rem 0.8rem; margin-bottom:0.5rem; font-size:0.78rem;">
-                    <div style="font-weight:700; color:{color};">{title}</div>
-                    <div style="color:#64748b; font-size:0.72rem; margin-top:2px;">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
 
 
 # ============================================================================
@@ -867,105 +869,10 @@ elif page == "🛍️ Store Catalog":
                     unsafe_allow_html=True,
                 )
                 if st.button(f"🛒 Order Item #{p_id}", key=f"cat_order_{p_id}", use_container_width=True):
-                    st.toast(
-                        f"Demo order simulated for {p.get('name')}!", icon="🎉")
-
-
-# ============================================================================
-# PAGE 4: 🛡️ Security & Audit Trail (Compliance & Tamper-Evident Ledger)
-# ============================================================================
-elif page == "🛡️ Security & Audit Trail":
-    st.markdown(
-        """
-        <div style="margin-bottom:1.5rem;">
-            <h1 style="font-size:1.8rem; font-weight:800; color:#ffffff; margin:0 0 0.3rem 0;">Compliance & Security Audit Trail</h1>
-            <p style="color:#94a3b8; font-size:0.88rem; margin:0;">
-                Tamper-evident, immutable audit ledger. Enforces strict PII masking on customer addresses and logs every approved and blocked action.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button("🔄 Refresh Audit Log", use_container_width=False):
-        st.rerun()
-
-    code, logs = api_request("GET", "/audit")
-
-    if code != 200 or not isinstance(logs, list):
-        st.error("Failed to load audit logs from backend.")
-    elif len(logs) == 0:
-        st.info("No audit logs recorded for your customer account yet. Try modifying an order in the Support Desk!")
-    else:
-        # Summary Metric Cards
-        total_logs = len(logs)
-        approved_count = sum(1 for l in logs if l.get(
-            "decision", "").lower() == "approved")
-        blocked_count = sum(1 for l in logs if l.get(
-            "decision", "").lower() == "blocked")
-        avg_latency = round(sum(l.get("latency_ms", 5)
-                            for l in logs) / max(total_logs, 1), 1)
-
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric("Total Ledger Entries", total_logs)
-        with m2:
-            st.metric("Approved Mutations", approved_count)
-        with m3:
-            st.metric("Blocked Security Events", blocked_count)
-        with m4:
-            st.metric("Avg Latency", f"{avg_latency} ms")
-
-        st.markdown("---")
-
-        for log in reversed(logs):
-            dec = log.get("decision", "APPROVED").upper()
-            action = log.get("action", "unknown")
-            order_id = log.get("order_id", "N/A")
-            req_id = log.get("request_id", "N/A")
-            created = log.get("created_at", "")
-            lat = log.get("latency_ms", 6)
-            before = log.get("before_state") or {}
-            after = log.get("after_state") or {}
-            rule_res = log.get("rule_results") or {}
-
-            dec_color = "#34d399" if dec == "APPROVED" else (
-                "#f87171" if dec == "BLOCKED" else "#fbbf24")
-
-            with st.container(border=True):
-                c_top1, c_top2 = st.columns([3, 1])
-                with c_top1:
-                    st.markdown(
-                        f"""
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <span style="font-weight:800; font-size:0.95rem; color:{dec_color};">● {dec}</span>
-                            <span style="font-weight:700; color:#ffffff;">Action: <code>{action}</code></span>
-                            <span style="color:#94a3b8; font-size:0.8rem;">Target Order: <b>#{order_id}</b></span>
-                        </div>
-                        <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">
-                            Trace UUID: <code>{req_id}</code> · Logged: {created}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with c_top2:
-                    st.markdown(
-                        f"""
-                        <div style="text-align:right;">
-                            <span style="font-size:0.75rem; background:#1e2434; color:#38bdf8; padding:3px 8px; border-radius:6px; font-weight:600;">
-                                ⚡ {lat} ms
-                            </span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-                c_diff1, c_diff2 = st.columns(2)
-                with c_diff1:
-                    st.markdown(
-                        "<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>Before State (Masked PII):</p>", unsafe_allow_html=True)
-                    st.json(before)
-                with c_diff2:
-                    st.markdown(
-                        "<p style='font-size:0.75rem; font-weight:700; color:#94a3b8; margin:0.4rem 0 0.2rem;'>After State (Committed):</p>", unsafe_allow_html=True)
-                    st.json(after)
+                    code, new_order = api_request("POST", "/orders", {"product_id": p_id, "quantity": 1})
+                    if code in (200, 201):
+                        st.toast(f"🎉 Order #{new_order.get('order_ref')} placed successfully! Track it in the Support Desk.", icon="🛍️")
+                        st.session_state.queued_prompt = f"Track order {new_order.get('order_id')}"
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to place order: {new_order.get('detail', 'Unknown error')}")
