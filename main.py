@@ -20,6 +20,7 @@ from fastapi import FastAPI, Depends, Header, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from langchain_agent import parse_intent_with_failover
 
 
 # ============================================================================
@@ -411,30 +412,16 @@ def extract_order_id(text: str) -> Optional[int]:
     return None
 
 
-def parse_intent(text: str) -> tuple[IntentEnum, Optional[int], Optional[str]]:
-    """Safe intent parser with regex failover."""
+def parse_intent(text: str) -> tuple[IntentEnum, Optional[int], Optional[str], str, float]:
+    """Use LangChain when configured and retain a no-key deterministic fallback."""
+    parsed, provider = parse_intent_with_failover(text)
+    # Keep identifiers grounded in the customer's actual message, never model output.
     order_id = extract_order_id(text)
-
-    # Address change
-    addr_match = re.search(
-        r"(?:change|update|ship to|deliver to)(?:.*?(?:address|destination))?.*?(?:to|at)\s+([A-Za-z0-9\s,\.\-\#\/]+)",
-        text,
-        re.IGNORECASE
-    )
-    if addr_match:
-        new_addr = addr_match.group(1).strip()
-        new_addr = re.sub(r"(?:for|of)?\s*order\s*#?\d+", "", new_addr, flags=re.IGNORECASE).strip()
-        return IntentEnum.CHANGE_ADDRESS, order_id, new_addr
-
-    # Cancel order
-    if re.search(r"\b(?:cancel|abort|terminate)\b", text, re.IGNORECASE):
-        return IntentEnum.CANCEL_ORDER, order_id, None
-
-    # Track order
-    if re.search(r"\b(?:track|where|status|when)\b", text, re.IGNORECASE):
-        return IntentEnum.TRACK_ORDER, order_id, None
-
-    return IntentEnum.GENERAL_INQUIRY, order_id, None
+    try:
+        intent = IntentEnum(parsed.intent)
+    except ValueError:
+        intent = IntentEnum.UNKNOWN
+    return intent, order_id, parsed.new_shipping_address, provider, parsed.confidence
 
 
 def record_audit(
@@ -808,9 +795,21 @@ def chat(payload: ChatRequest, cust: CustomerSchema = Depends(resolve_customer))
     start_t = time.time()
     trace: List[Dict[str, str]] = [{"node": "Identify", "status": f"Customer #{cust.customer_id} ({cust.email})"}]
 
-    intent, extracted_id, payload_val = parse_intent(payload.message)
+    intent, extracted_id, payload_val, parser_provider, confidence = parse_intent(payload.message)
     target_id = payload.order_id or extracted_id
-    trace.append({"node": "Parse Intent", "status": f"Intent: {intent.value}, Target Order: {target_id}"})
+    trace.append({
+        "node": "Parse Intent",
+        "status": f"Intent: {intent.value}, Target Order: {target_id}, Provider: {parser_provider}",
+    })
+
+    if confidence < 0.70:
+        return ChatResponse(
+            reply="I could not confidently identify that request. Please rephrase it and include the order number if relevant.",
+            intent=intent,
+            extracted_order_id=target_id,
+            needs_confirmation=False,
+            trace=trace,
+        )
 
     # Read-only or general inquiry
     if intent == IntentEnum.TRACK_ORDER and target_id and target_id in ORDERS_DB:
