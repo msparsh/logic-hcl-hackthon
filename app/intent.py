@@ -168,11 +168,15 @@ def _extract_address(text: str) -> Optional[str]:
                       text, re.IGNORECASE)
     # Also accept "new address is X" / "address: X" without the word "to".
     match = match or re.search(rf"{_ADDRESS_WORD}\s*(?:is|:|=|-)\s*(.+)$", text, re.IGNORECASE)
+    # "new address for ORD-10023 is X": the order sits between the word and "is".
+    match = match or re.search(rf"{_ADDRESS_WORD}\s+(?:for|of)\s+[^\n]*?\s(?:is|:|=)\s*(.+)$",
+                               text, re.IGNORECASE)
     if not match:
         return None
     address = match.group(1)
-    address = re.sub(r"\b(?:for|of|on)\s+(?:my\s+)?(?:order\s*#?\s*|ORD[-\s]?)\d{4,7}\b", "",
-                     address, flags=re.IGNORECASE)
+    # Drop "for order ORD-10023", "of order #10023", "on ORD-10023", "for my order 10023".
+    address = re.sub(r"\b(?:for|of|on)\s+(?:my\s+)?(?:order\s*(?:no\.?|number|id)?\s*#?\s*)?(?:ORD[-\s]?)?\d{4,7}\b",
+                     "", address, flags=re.IGNORECASE)
     address = re.sub(r"\b(please|pls|thanks|thank you)\b.*$", "", address, flags=re.IGNORECASE)
     return address.strip(" .,;") or None
 
