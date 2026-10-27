@@ -395,6 +395,12 @@ def api_request(method: str, path: str, json_data: dict = None):
 # LOGIN GATE (rule R1): nothing else renders until the backend issues a token.
 # The token comes from POST /login and is sent as a Bearer header by api_request.
 # ============================================================================
+# The first page is the order support desk (chat agent); it is the default after login.
+PAGES = ["💬 Ask Logic", "📦 Orders Hub", "🛡️ Security & Audit"]
+DEFAULT_PAGE = PAGES[0]
+if "page" not in st.session_state:
+    st.session_state.page = DEFAULT_PAGE
+
 if not st.session_state.token:
     # Hide the sidebar on the login screen and narrow the page
     st.markdown(
@@ -438,6 +444,7 @@ if not st.session_state.token:
                     st.session_state.token = resp["access_token"]
                     st.session_state.customer_email = resp["customer_email"]
                     st.session_state.customer_name = resp["customer_name"]
+                    st.session_state.page = DEFAULT_PAGE  # always land on the support desk
                     st.rerun()
                 elif "error" in resp:  # backend unreachable
                     st.error(resp["error"])
@@ -478,7 +485,8 @@ with st.sidebar:
     st.markdown('<p class="side-section-label">NAVIGATE</p>', unsafe_allow_html=True)
     page = st.radio(
         "Navigate",
-        ["💬 Ask Logic", "📦 Orders Hub", "🛡️ Security & Audit"],
+        PAGES,
+        key="page",  # kept in session state so login/logout can reset it
         label_visibility="collapsed",
     )
 
@@ -542,6 +550,7 @@ with st.sidebar:
         st.session_state.token = None
         st.session_state.customer_email = ""
         st.session_state.customer_name = ""
+        st.session_state.page = DEFAULT_PAGE
         st.session_state.chat_history = []
         st.session_state.pending_change_request = None
         st.session_state.queued_prompt = None
