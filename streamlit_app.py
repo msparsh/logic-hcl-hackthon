@@ -391,38 +391,66 @@ def api_request(method: str, path: str, json_data: dict = None):
         return 500, {"error": f"Backend offline ({API_BASE_URL}). Run: python -m uvicorn main:app", "detail": str(e)}
 
 
-<<<<<<< HEAD
 # ============================================================================
-# SIDEBAR: Resolvo-inspired Navigation, History Timeline, Customer Card
+# LOGIN GATE (rule R1): nothing else renders until the backend issues a token.
+# The token comes from POST /login and is sent as a Bearer header by api_request.
 # ============================================================================
-=======
-# ---------------------------------------------------------------------------
-# Login gate: nothing else is shown until the backend issues a token (R1)
-# ---------------------------------------------------------------------------
 if not st.session_state.token:
-    st.title("Team Logic - Sign in")
-    with st.form("login_form"):
-        email = st.text_input("Email", value="alice@example.com")
-        pin = st.text_input("PIN", type="password", help="Demo PIN: 1234")
-        submitted = st.form_submit_button("Log in", type="primary")
-    if submitted:
-        code, resp = api_request("POST", "/login", {"email": email, "pin": pin})
-        if code == 200:
-            st.session_state.token = resp["access_token"]
-            st.session_state.customer_email = resp["customer_email"]
-            st.session_state.customer_name = resp["customer_name"]
-            st.rerun()
-        elif "error" in resp:  # backend unreachable
-            st.error(resp["error"])
-        elif isinstance(resp.get("detail"), str):  # 401 / 429
-            st.error(resp["detail"])
-        else:  # 422 format errors
-            st.error("Enter a valid email and a numeric PIN of 4 to 8 digits.")
-    st.stop()
+    # Hide the sidebar on the login screen and narrow the page
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"], div[data-testid="collapsedControl"] { display: none !important; }
+        .login-wrap { text-align: center; margin-top: 6vh; margin-bottom: 1.4rem; }
+        .login-title { font-size: 1.9rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.03em; }
+        .login-sub { font-size: 0.85rem; color: #94a3b8; margin-top: 0.3rem; }
+        div[data-testid="stForm"] {
+            background: #13161f; border: 1px solid #1f2433; border-radius: 14px; padding: 1.5rem;
+        }
+        </style>
+        <div class="login-wrap">
+            <div class="hero-logo-box">🤖</div>
+            <div class="login-title">Welcome to Logic</div>
+            <div class="login-sub">Sign in to manage your orders with the AI support agent</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, col_login, _ = st.columns([1, 1.2, 1])
+    with col_login:
+        with st.form("login_form"):
+            email = st.text_input("Email", placeholder="you@example.com")
+            pin = st.text_input("PIN", type="password", placeholder="4 to 8 digits")
+            submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
+        st.caption("Demo account: alice@example.com / PIN 1234")
+
+        if submitted:
+            # Validate before calling the backend so the user gets a clear message
+            if not email.strip() or not pin:
+                st.error("Please enter both your email and PIN.")
+            elif not (pin.isdigit() and 4 <= len(pin) <= 8):
+                st.error("PIN must be 4 to 8 digits.")
+            else:
+                code, resp = api_request("POST", "/login", {"email": email.strip(), "pin": pin})
+                if code == 200:
+                    # Authenticated: store identity + token, then rerun into the main app
+                    st.session_state.token = resp["access_token"]
+                    st.session_state.customer_email = resp["customer_email"]
+                    st.session_state.customer_name = resp["customer_name"]
+                    st.rerun()
+                elif "error" in resp:  # backend unreachable
+                    st.error(resp["error"])
+                elif isinstance(resp.get("detail"), str):  # 401 wrong credentials / 429 locked out
+                    st.error(resp["detail"])
+                else:  # 422 format errors
+                    st.error("Enter a valid email and a numeric PIN of 4 to 8 digits.")
+    st.stop()  # never render the app below without a token
 
 
-# Sidebar: brand, navigation, session & backend status
->>>>>>> fb585ba (authentication file)
+# ============================================================================
+# SIDEBAR: Navigation, History Timeline, Customer Card, Logout
+# ============================================================================
 with st.sidebar:
     st.markdown(
         """
@@ -476,29 +504,19 @@ with st.sidebar:
     )
 
     st.markdown("---")
-<<<<<<< HEAD
-=======
-    st.caption("CUSTOMER SESSION")
-    st.write(f"👤 {st.session_state.customer_name}")
-    st.write(f"📧 `{st.session_state.customer_email}`")
-    if st.button("🚪 Log out", use_container_width=True):
-        st.session_state.token = None
-        st.session_state.chat_history = []
-        st.session_state.pending_change_request = None
-        st.rerun()
->>>>>>> fb585ba (authentication file)
 
     # Session Profile Card
     status_code, health = api_request("GET", "/health")
     backend_online = (status_code == 200)
+    initials = "".join(w[0] for w in st.session_state.customer_name.split()[:2]).upper() or "?"
 
     st.markdown(
         f"""
         <div style="background:#151822; border:1px solid #232838; border-radius:10px; padding:0.75rem; margin-bottom:0.7rem;">
             <div style="display:flex; align-items:center; gap:10px;">
-                <div style="width:32px; height:32px; border-radius:50%; background:#2563eb; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff;">AS</div>
+                <div style="width:32px; height:32px; border-radius:50%; background:#2563eb; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff;">{initials}</div>
                 <div>
-                    <div style="font-size:0.82rem; font-weight:600; color:#f8fafc;">Alice Smith</div>
+                    <div style="font-size:0.82rem; font-weight:600; color:#f8fafc;">{st.session_state.customer_name}</div>
                     <div style="font-size:0.7rem; color:#94a3b8;">{st.session_state.customer_email}</div>
                 </div>
             </div>
@@ -519,6 +537,16 @@ with st.sidebar:
         st.session_state.queued_prompt = None
         st.rerun()
 
+    # Logout: drop the token and all per-user state, which returns to the login screen
+    if st.button("🚪 Log out", use_container_width=True):
+        st.session_state.token = None
+        st.session_state.customer_email = ""
+        st.session_state.customer_name = ""
+        st.session_state.chat_history = []
+        st.session_state.pending_change_request = None
+        st.session_state.queued_prompt = None
+        st.rerun()
+
 
 # ============================================================================
 # PAGE 1: 💬 Ask Logic (Conversational Agent with Hero & Right Tools Panel)
@@ -527,15 +555,14 @@ if page == "💬 Ask Logic":
     # 2-column layout: Main Chat (70%) + Right Guardrail/Tools Inspector (30%)
     col_main, col_tools = st.columns([7, 3], gap="medium")
 
-<<<<<<< HEAD
     with col_main:
         # Welcome Hero (shown when no prior chat)
         if not st.session_state.chat_history and not st.session_state.pending_change_request:
             st.markdown(
-                """
+                f"""
                 <div class="hero-wrap">
                     <div class="hero-logo-box">🤖</div>
-                    <div class="hero-hello">Hello! Alice Smith</div>
+                    <div class="hero-hello">Hello! {st.session_state.customer_name}</div>
                     <div class="hero-heading">How can I help you today?</div>
                 </div>
                 """,
@@ -570,22 +597,6 @@ if page == "💬 Ask Logic":
                 )
                 if st.button("Change Address", key="act_addr", use_container_width=True):
                     st.session_state.queued_prompt = "Change shipping address for order 10023 to 12 MG Road, Pune"
-=======
-if page == "💬 Ask Agent":
-    # Welcome hero + suggestion cards, shown only on an empty conversation
-    if not st.session_state.chat_history and not st.session_state.pending_change_request:
-        st.markdown(
-            '<div class="hero"><div class="logo">✦</div>'
-            f'<div class="hello">Hello! {st.session_state.customer_name}</div>'
-            '<h1>How can I help you today?</h1></div>',
-            unsafe_allow_html=True,
-        )
-        cols = st.columns(len(SUGGESTIONS))
-        for col, (icon, title, prompt) in zip(cols, SUGGESTIONS):
-            with col:
-                if st.button(f"{icon}\n\n{title}", key=f"sug_{title}", use_container_width=True):
-                    st.session_state.queued_prompt = prompt
->>>>>>> fb585ba (authentication file)
                     st.rerun()
 
             with c2:
