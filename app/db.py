@@ -156,6 +156,87 @@ def get_order_items(order_id: int, customer_id: int, engine: Optional[Engine] = 
         ))
 
 
+def list_customer_order_items(customer_id: int, engine: Optional[Engine] = None) -> list[dict]:
+    """Products of all of one customer's orders, in one query (for the orders page)."""
+    with (engine or get_engine()).connect() as conn:
+        return _rows(conn.execute(
+            text("""SELECT i.order_id, i.product_id, p.name, p.category, p.base_colour,
+                           p.article_type, i.quantity, i.item_price
+                    FROM app.order_items i
+                    JOIN app.orders o ON o.order_id = i.order_id
+                    JOIN app.products p ON p.product_id = i.product_id
+                    WHERE o.customer_id = :cid
+                    ORDER BY i.order_id, p.name"""),
+            {"cid": customer_id},
+        ))
+
+
+def list_products(limit: int = 12, engine: Optional[Engine] = None) -> list[dict]:
+    """Catalog for the store page: most-ordered products first, with a reference price."""
+    with (engine or get_engine()).connect() as conn:
+        return _rows(conn.execute(
+            text("""SELECT p.product_id, p.name, p.category, p.sub_category, p.article_type,
+                           p.base_colour, COALESCE(MAX(i.item_price), 999.00) AS price,
+                           COUNT(i.order_id) AS times_ordered
+                    FROM app.products p
+                    LEFT JOIN app.order_items i ON i.product_id = p.product_id
+                    GROUP BY p.product_id
+                    ORDER BY times_ordered DESC, p.product_id
+                    LIMIT :lim"""),
+            {"lim": max(1, min(limit, 100))},
+        ))
+
+
+def create_order(customer_id: int, product_id: int, quantity: int = 1,
+                 engine: Optional[Engine] = None) -> dict:
+    """Place a new order (status placed, paid) shipped to the customer's latest address."""
+    if quantity < 1 or quantity > 10:
+        raise DatabaseError("Quantity must be between 1 and 10.")
+    with (engine or get_engine()).begin() as conn:
+        product = _row(conn.execute(
+            text("""SELECT p.product_id, COALESCE(MAX(i.item_price), 999.00) AS price
+                    FROM app.products p LEFT JOIN app.order_items i ON i.product_id = p.product_id
+                    WHERE p.product_id = :pid GROUP BY p.product_id"""),
+            {"pid": product_id},
+        ))
+        if product is None:
+            raise DatabaseError("Product not found.")
+        customer = _row(conn.execute(
+            text("""SELECT c.home_location, c.home_country,
+                           (SELECT o.shipping_address FROM app.orders o WHERE o.customer_id = c.customer_id
+                            ORDER BY o.created_at DESC LIMIT 1) AS last_address
+                    FROM app.customers c WHERE c.customer_id = :cid"""),
+            {"cid": customer_id},
+        ))
+        if customer is None:
+            raise DatabaseError("Customer not found.")
+        address = customer["last_address"] or customer["home_location"] or "Address on file"
+        if len(address.strip()) < 5:
+            address = f"{address}, {customer['home_country'] or ''}".strip(", ")
+        delivery = date.today() + timedelta(days=5)
+        total = product["price"] * quantity
+        order = _row(conn.execute(
+            text("""INSERT INTO app.orders
+                        (booking_id, customer_id, created_at, payment_method, payment_status, status,
+                         shipping_address, shipping_country, delivery_date, original_delivery_date,
+                         promo_amount, shipment_fee, total_amount)
+                    VALUES (:bid, :cid, now(), 'UPI', 'Success', 'placed', :addr, :country,
+                            :dd, :dd, 0, 0, :total)
+                    RETURNING *"""),
+            {"bid": f"WEB-{uuid.uuid4().hex[:12]}", "cid": customer_id, "addr": address,
+             "country": customer["home_country"] or "India", "dd": delivery, "total": total},
+        ))
+        conn.execute(
+            text("""INSERT INTO app.order_items (order_id, product_id, quantity, item_price)
+                    VALUES (:oid, :pid, :qty, :price)"""),
+            {"oid": order["order_id"], "pid": product_id, "qty": quantity, "price": product["price"]},
+        )
+        _insert_audit(conn, customer_id=customer_id, order_id=order["order_id"], action="order_placed",
+                      decision="approved", after_state={"status": "placed", "product_id": product_id,
+                                                        "quantity": quantity})
+        return order
+
+
 # ---------------------------------------------------------------------------
 # Audit log (append-only)
 # ---------------------------------------------------------------------------
@@ -253,6 +334,13 @@ def create_change_request(
         ))
         if order is None:
             raise DatabaseError("Order not found in this account.")
+
+        # A preview nobody answered must not block this order forever (R9).
+        conn.execute(
+            text("""UPDATE app.change_requests SET status = 'expired', decided_at = now()
+                    WHERE order_id = :oid AND status = 'pending' AND expires_at < now()"""),
+            {"oid": order_id},
+        )
 
         new_value = "cancelled" if intent == "cancel_order" else proposed_change.get(column)
         preview = {"field": column, "old": order[column], "new": new_value,
