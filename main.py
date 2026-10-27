@@ -574,6 +574,88 @@ ORDERS_DB: Dict[int, OrderSchema] = {
                 product=PRODUCTS_DB[102]
             )
         ]
+    ),
+    # Demo-only orders for alice@example.com (customer 1), added for manual testing
+    10025: OrderSchema(
+        order_id=10025,
+        order_ref="ORD-10025",
+        booking_id="KG-984212",
+        customer_id=1,
+        created_at=utc_now() - timedelta(hours=5),
+        payment_method="UPI",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.PLACED,  # editable: address change / cancel allowed
+        shipping_address="12 MG Road, Koregaon Park, Pune, MH 411001",
+        delivery_date=date.today() + timedelta(days=6),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("0.00"),
+        total_amount=Decimal("3999.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(hours=5),
+        items=[
+            OrderItemSchema(
+                order_id=10025,
+                product_id=102,
+                quantity=1,
+                item_price=Decimal("3999.00"),
+                product=PRODUCTS_DB[102]
+            )
+        ]
+    ),
+    10026: OrderSchema(
+        order_id=10026,
+        order_ref="ORD-10026",
+        booking_id="KG-984213",
+        customer_id=1,
+        created_at=utc_now() - timedelta(days=4),
+        payment_method="Credit Card",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.SHIPPED,  # locked: guardrail should block changes
+        shipping_address="88 Baner Road, Pune, MH 411045",
+        delivery_date=date.today() + timedelta(days=2),
+        promo_code="FESTIVE5",
+        promo_amount=Decimal("200.00"),
+        shipment_fee=Decimal("50.00"),
+        total_amount=Decimal("1849.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(days=2),
+        items=[
+            OrderItemSchema(
+                order_id=10026,
+                product_id=106,
+                quantity=1,
+                item_price=Decimal("1999.00"),
+                product=PRODUCTS_DB[106]
+            )
+        ]
+    ),
+    10027: OrderSchema(
+        order_id=10027,
+        order_ref="ORD-10027",
+        booking_id="KG-984214",
+        customer_id=1,
+        created_at=utc_now() - timedelta(days=8),
+        payment_method="Debit Card",
+        payment_status=PaymentStatusEnum.SUCCESS,
+        status=OrderStatusEnum.DELIVERED,
+        shipping_address="4 Park Street, Flat 3B, Pune, MH 411001",
+        delivery_date=date.today() - timedelta(days=3),
+        promo_code=None,
+        promo_amount=Decimal("0.00"),
+        shipment_fee=Decimal("0.00"),
+        total_amount=Decimal("1198.00"),
+        version=1,
+        updated_at=utc_now() - timedelta(days=3),
+        items=[
+            OrderItemSchema(
+                order_id=10027,
+                product_id=105,
+                quantity=2,
+                item_price=Decimal("599.00"),
+                product=PRODUCTS_DB[105]
+            )
+        ]
     )
 }
 
