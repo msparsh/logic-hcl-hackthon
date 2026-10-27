@@ -2,3 +2,18 @@ __pycache__/
 *.pyc
 .env
 .pytest_cache/
+
+# Data (raw dataset and local databases are never committed)
+data/raw/
+*.db
+*.sqlite3
+
+# Python environments and tool caches
+.venv/
+venv/
+.ruff_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
