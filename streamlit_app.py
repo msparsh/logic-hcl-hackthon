@@ -18,7 +18,7 @@ API_BASE_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(
     page_title="Logic · Autonomous AI Support",
-    page_icon="✦",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -34,8 +34,6 @@ if "pending_change_request" not in st.session_state:
     st.session_state.pending_change_request = None
 if "queued_prompt" not in st.session_state:
     st.session_state.queued_prompt = None
-if "right_panel_tab" not in st.session_state:
-    st.session_state.right_panel_tab = "Tools"
 
 # High-fidelity Pro Dark Theme CSS injection
 st.markdown(
@@ -260,16 +258,6 @@ st.markdown(
         line-height: 1.4;
     }
 
-    /* Bottom Suggestion Chips */
-    .suggest-box {
-        display: flex;
-        justify-content: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-top: 1.8rem;
-        margin-bottom: 1.5rem;
-    }
-
     /* Streamlit Default Buttons Customization */
     div.stButton > button {
         background: #141722 !important;
@@ -361,14 +349,6 @@ st.markdown(
         margin: 1.2rem 0;
         box-shadow: 0 4px 20px rgba(37, 99, 235, 0.2);
     }
-    .diff-box {
-        background: #0b0d14;
-        border: 1px solid #1d2232;
-        border-radius: 8px;
-        padding: 0.8rem;
-        font-family: monospace;
-        font-size: 0.82rem;
-    }
 
     /* Chat Messages */
     div[data-testid="stChatMessage"] {
@@ -400,8 +380,7 @@ def api_request(method: str, path: str, json_data: dict = None):
         if method.upper() == "GET":
             resp = requests.get(url, headers=headers, timeout=5)
         else:
-            resp = requests.post(url, headers=headers,
-                                 json=json_data, timeout=5)
+            resp = requests.post(url, headers=headers, json=json_data, timeout=5)
         return resp.status_code, resp.json()
     except Exception as e:
         return 500, {"error": f"Backend offline ({API_BASE_URL}). Run: python -m uvicorn main:app", "detail": str(e)}
@@ -414,7 +393,7 @@ with st.sidebar:
     st.markdown(
         """
         <div class="brand-container">
-            <div class="brand-icon">✦</div>
+            <div class="brand-icon">🤖</div>
             <div class="brand-title-wrap">
                 <span class="brand-title">Logic</span>
                 <span class="brand-subtitle">AI-Powered Support</span>
@@ -426,8 +405,7 @@ with st.sidebar:
     )
 
     # Search bar & Quick action
-    search_q = st.text_input(
-        "Search", placeholder="🔍 Search orders, policies... (⌘S)", label_visibility="collapsed")
+    search_q = st.text_input("Search", placeholder="🔍 Search orders, policies... (⌘S)", label_visibility="collapsed")
     if st.button("＋  New Conversation", use_container_width=True, type="primary"):
         st.session_state.chat_history = []
         st.session_state.pending_change_request = None
@@ -435,8 +413,7 @@ with st.sidebar:
         st.rerun()
 
     # Views Navigation
-    st.markdown('<p class="side-section-label">NAVIGATE</p>',
-                unsafe_allow_html=True)
+    st.markdown('<p class="side-section-label">NAVIGATE</p>', unsafe_allow_html=True)
     page = st.radio(
         "Navigate",
         ["💬 Ask Logic", "📦 Orders Hub", "🛡️ Security & Audit"],
@@ -444,8 +421,7 @@ with st.sidebar:
     )
 
     # Activity Timeline (Resolvo replica)
-    st.markdown('<p class="side-section-label">YESTERDAY</p>',
-                unsafe_allow_html=True)
+    st.markdown('<p class="side-section-label">YESTERDAY</p>', unsafe_allow_html=True)
     st.markdown(
         """
         <div class="history-item"><div class="history-dot"></div><span>14 customer requests auto-resolved</span></div>
@@ -455,8 +431,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.markdown('<p class="side-section-label">THIS WEEK</p>',
-                unsafe_allow_html=True)
+    st.markdown('<p class="side-section-label">THIS WEEK</p>', unsafe_allow_html=True)
     st.markdown(
         """
         <div class="history-item"><div class="history-dot"></div><span>Zero PII leakage detected</span></div>
@@ -513,7 +488,7 @@ if page == "💬 Ask Logic":
             st.markdown(
                 """
                 <div class="hero-wrap">
-                    <div class="hero-logo-box">✦</div>
+                    <div class="hero-logo-box">🤖</div>
                     <div class="hero-hello">Hello! Alice Smith</div>
                     <div class="hero-heading">How can I help you today?</div>
                 </div>
@@ -600,17 +575,16 @@ if page == "💬 Ask Logic":
 
         # Render Chat History
         for chat in st.session_state.chat_history:
-            with st.chat_message(chat["role"], avatar="👤" if chat["role"] == "user" else "✦"):
+            avatar_icon = "👤" if chat["role"] == "user" else "🤖"
+            with st.chat_message(chat["role"], avatar=avatar_icon):
                 st.markdown(chat["content"])
                 if chat.get("trace"):
                     with st.expander("🔍 Guardrail Decision & Latency Trace", expanded=False):
                         for step in chat["trace"]:
                             node_name = step.get('node', 'Rule')
                             node_stat = step.get('status', 'OK')
-                            color = "#34d399" if node_stat in [
-                                "passed", "success", "OK"] else "#f59e0b"
-                            st.markdown(
-                                f"- **{node_name}**: <span style='color:{color}; font-weight:600;'>{node_stat}</span>", unsafe_allow_html=True)
+                            color = "#34d399" if node_stat in ["passed", "success", "OK"] else "#f59e0b"
+                            st.markdown(f"- **{node_name}**: <span style='color:{color}; font-weight:600;'>{node_stat}</span>", unsafe_allow_html=True)
 
         # Render Pending Confirmation (Guardrail verification before DB write)
         if st.session_state.pending_change_request:
@@ -636,11 +610,9 @@ if page == "💬 Ask Logic":
 
             diff_col1, diff_col2 = st.columns(2)
             with diff_col1:
-                st.markdown(
-                    f"**Current State (Database):**\n```json\n{json.dumps(cr.get('preview', {}).get('current'), indent=2)}\n```")
+                st.markdown(f"**Current State (Database):**\n```json\n{json.dumps(cr.get('preview', {}).get('current'), indent=2)}\n```")
             with diff_col2:
-                st.markdown(
-                    f"**Proposed State (To Commit):**\n```json\n{json.dumps(cr.get('preview', {}).get('new'), indent=2)}\n```")
+                st.markdown(f"**Proposed State (To Commit):**\n```json\n{json.dumps(cr.get('preview', {}).get('new'), indent=2)}\n```")
 
             b_conf, b_abort = st.columns([1, 1])
             with b_conf:
@@ -651,13 +623,10 @@ if page == "💬 Ask Logic":
                         "idempotency_key": cr["idempotency_key"]
                     })
                     if s_code == 200:
-                        msg = resp.get(
-                            "message", "Order successfully updated.")
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"✅ **Applied:** {msg}"})
+                        msg = resp.get("message", "Order successfully updated.")
+                        st.session_state.chat_history.append({"role": "assistant", "content": f"✅ **Applied:** {msg}"})
                     else:
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
+                        st.session_state.chat_history.append({"role": "assistant", "content": f"❌ **Error:** {resp.get('detail')}"})
                     st.session_state.pending_change_request = None
                     st.rerun()
 
@@ -668,26 +637,22 @@ if page == "💬 Ask Logic":
                         "action": "cancel",
                         "idempotency_key": cr["idempotency_key"]
                     })
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": "❌ Change request cancelled."})
+                    st.session_state.chat_history.append({"role": "assistant", "content": "❌ Change request cancelled."})
                     st.session_state.pending_change_request = None
                     st.rerun()
 
         # Chat Input Bar
-        user_input = st.chat_input(
-            "Enter your request (e.g. 'Change shipping address for order 10023 to 12 MG Road, Pune')") or st.session_state.queued_prompt
+        user_input = st.chat_input("Enter your request (e.g. 'Change shipping address for order 10023 to 12 MG Road, Pune')") or st.session_state.queued_prompt
         st.session_state.queued_prompt = None
 
         if user_input:
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_input})
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
             with st.chat_message("user", avatar="👤"):
                 st.markdown(user_input)
 
-            with st.chat_message("assistant", avatar="✦"):
+            with st.chat_message("assistant", avatar="🤖"):
                 with st.spinner("Logic is evaluating request & safety guardrails..."):
-                    status_code, resp = api_request(
-                        "POST", "/chat", {"message": user_input})
+                    status_code, resp = api_request("POST", "/chat", {"message": user_input})
 
                 if status_code == 200:
                     reply = resp.get("reply", "")
@@ -703,11 +668,9 @@ if page == "💬 Ask Logic":
                     })
                     st.rerun()
                 else:
-                    err_msg = resp.get(
-                        "detail", "Failed to communicate with Logic agent backend.")
+                    err_msg = resp.get("detail", "Failed to communicate with Logic agent backend.")
                     st.error(err_msg)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": f"⚠️ {err_msg}"})
+                    st.session_state.chat_history.append({"role": "assistant", "content": f"⚠️ {err_msg}"})
 
         st.markdown(
             '<div class="app-disclaimer">Logic AI can make mistakes. All database modifications require customer confirmation. · Your privacy & Logic</div>',
@@ -783,8 +746,7 @@ if page == "💬 Ask Logic":
         s_code, orders_preview = api_request("GET", "/orders")
         if s_code == 200 and isinstance(orders_preview, list):
             for op in orders_preview:
-                st_color = "#38bdf8" if op.get("status") == "placed" else (
-                    "#fbbf24" if op.get("status") == "shipped" else "#94a3b8")
+                st_color = "#38bdf8" if op.get("status") == "placed" else ("#fbbf24" if op.get("status") == "shipped" else "#94a3b8")
                 st.markdown(
                     f"""
                     <div style="background:#13151f; border:1px solid #1f2331; border-radius:8px; padding:0.6rem; margin-bottom:0.5rem; font-size:0.75rem;">
@@ -822,35 +784,28 @@ elif page == "📦 Orders Hub":
     if s_code == 200 and isinstance(orders, list):
         for o in orders:
             status_val = o.get('status', '').upper()
-            badge_class = "badge-green" if status_val == "DELIVERED" else (
-                "badge-amber" if status_val == "SHIPPED" else ("badge-red" if status_val == "CANCELLED" else "badge-purple"))
+            badge_class = "badge-green" if status_val == "DELIVERED" else ("badge-amber" if status_val == "SHIPPED" else ("badge-red" if status_val == "CANCELLED" else "badge-purple"))
 
             with st.container(border=True):
                 c1, c2, c3, c4 = st.columns([3, 2, 2, 3])
                 with c1:
-                    st.markdown(
-                        f"<div style='font-size:1.1rem; font-weight:700; color:#fff;'>Order #{o.get('order_ref')}</div>", unsafe_allow_html=True)
-                    st.caption(
-                        f"Booking ID: `{o.get('booking_id')}` | DB Version: {o.get('version')}")
+                    st.markdown(f"<div style='font-size:1.1rem; font-weight:700; color:#fff;'>Order #{o.get('order_ref')}</div>", unsafe_allow_html=True)
+                    st.caption(f"Booking ID: `{o.get('booking_id')}` | DB Version: {o.get('version')}")
                 with c2:
-                    st.markdown(
-                        f"**Status:** <span class='card-icon-badge {badge_class}' style='display:inline; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:600;'>{status_val}</span>", unsafe_allow_html=True)
-                    st.caption(
-                        f"Payment: {o.get('payment_method')} ({o.get('payment_status')})")
+                    st.markdown(f"**Status:** <span class='card-icon-badge {badge_class}' style='display:inline; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:600;'>{status_val}</span>", unsafe_allow_html=True)
+                    st.caption(f"Payment: {o.get('payment_method')} ({o.get('payment_status')})")
                 with c3:
                     st.markdown(f"**Total:** `${o.get('total_amount')}`")
                     st.caption(f"Delivery: {o.get('delivery_date')}")
                 with c4:
-                    st.markdown(
-                        f"**Shipping Address:**\n`{o.get('shipping_address')}`")
+                    st.markdown(f"**Shipping Address:**\n`{o.get('shipping_address')}`")
 
                 items = o.get("items", [])
                 if items:
                     with st.expander("📦 Ordered Line Items"):
                         for it in items:
                             prod = it.get("product") or {}
-                            st.markdown(
-                                f"- **{prod.get('name', 'Item')}** — Qty: `{it.get('quantity')}` × `${it.get('item_price')}` (Category: `{prod.get('category')}`)")
+                            st.markdown(f"- **{prod.get('name', 'Item')}** — Qty: `{it.get('quantity')}` × `${it.get('item_price')}` (Category: `{prod.get('category')}`)")
     else:
         st.info("No orders found or backend service is offline.")
 
@@ -877,13 +832,11 @@ else:
     s_code, logs = api_request("GET", "/audit")
     if s_code == 200 and isinstance(logs, list):
         if not logs:
-            st.info(
-                "No audit logs recorded yet. Try modifying an address or cancelling an order in the 'Ask Logic' chat.")
+            st.info("No audit logs recorded yet. Try modifying an address or cancelling an order in the 'Ask Logic' chat.")
         else:
             for log in reversed(logs):
                 dec = log.get("decision", "").upper()
-                badge_color = "#34d399" if dec == "APPROVED" else (
-                    "#f87171" if dec == "BLOCKED" else "#fbbf24")
+                badge_color = "#34d399" if dec == "APPROVED" else ("#f87171" if dec == "BLOCKED" else "#fbbf24")
                 with st.container(border=True):
                     col_h1, col_h2 = st.columns([3, 1])
                     with col_h1:
@@ -891,8 +844,7 @@ else:
                             f"<span style='color:{badge_color}; font-weight:700;'>● {dec}</span> · <b>Action:</b> <code>{log.get('action')}</code> · <b>Order ID:</b> <code>#{log.get('order_id')}</code>",
                             unsafe_allow_html=True,
                         )
-                        st.caption(
-                            f"Audit UUID: {log.get('request_id')} | Created: {log.get('created_at')}")
+                        st.caption(f"Audit UUID: {log.get('request_id')} | Created: {log.get('created_at')}")
                     with col_h2:
                         st.metric("Latency", f"{log.get('latency_ms', 12)} ms")
 
