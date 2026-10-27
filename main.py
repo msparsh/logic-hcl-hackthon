@@ -16,11 +16,23 @@ import time
 from typing import Any, Dict, List, Optional
 import uuid
 
-from fastapi import FastAPI, Depends, Header, HTTPException, Query, status
+from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from langchain_agent import parse_intent_with_failover
+
+from auth import (
+    check_login,
+    clear_failed_logins,
+    create_access_token,
+    get_token_customer_id,
+    hash_pin,
+    is_locked_out,
+    record_failed_login,
+    settings as auth_settings,
+)
 
 
 # ============================================================================
@@ -195,8 +207,10 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    expires_in: int = Field(..., description="Seconds until the token expires")
     customer_id: int
     customer_email: str
+    customer_name: str
 
 
 class ChatRequest(BaseModel):
@@ -295,7 +309,7 @@ CUSTOMERS_DB: Dict[int, Dict[str, Any]] = {
         "email": "alice@example.com",
         "home_location": "Pune, Maharashtra",
         "home_country": "India",
-        "pin": "1234",
+        "pin_hash": hash_pin("1234"),  # demo PIN 1234, same as db/seed.sql
         "joined_at": date(2025, 1, 15)
     }
 }
@@ -368,24 +382,19 @@ IDEMPOTENCY_KEYS_SEEN: set = set()
 # 4. Helper Functions: Intent Extraction & Security Guardrails
 # ============================================================================
 
-def resolve_customer(
-    authorization: Optional[str] = Header(default=None),
-    x_customer_id: Optional[str] = Header(default=None, alias="X-Customer-ID")
-) -> CustomerSchema:
-    """Extracts and verifies customer identity."""
-    cid = 1  # Default to demo customer 1
-    if x_customer_id and isinstance(x_customer_id, str) and x_customer_id.isdigit():
-        cid = int(x_customer_id)
-    elif authorization and isinstance(authorization, str) and "Bearer " in authorization:
-        token = authorization.split("Bearer ")[-1].strip()
-        if token.startswith("cust_") and token.replace("cust_", "").isdigit():
-            cid = int(token.replace("cust_", ""))
-
-    cust = CUSTOMERS_DB.get(cid)
+def resolve_customer(customer_id: int = Depends(get_token_customer_id)) -> CustomerSchema:
+    """
+    Returns the logged-in customer (R1).
+    customer_id comes only from the verified JWT (see auth.py); there is no
+    header override and no default customer.
+    """
+    cust = CUSTOMERS_DB.get(customer_id)
     if not cust:
+        # Valid signature but the customer no longer exists
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized: Customer record not found"
+            detail="Unauthorized: Customer record not found",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return CustomerSchema(
         customer_id=cust["customer_id"],
@@ -496,7 +505,14 @@ def demo_web_interface():
     </div>
     <div class="flex items-center space-x-4 text-xs">
       <span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-3 py-1 rounded-full">● Backend Online</span>
-      <span class="bg-slate-700 text-slate-300 px-3 py-1 rounded-full">👤 Alice Smith (cust_1)</span>
+      <!-- Login: the token is kept only in this page's memory -->
+      <form id="login-form" onsubmit="event.preventDefault(); login();" class="flex items-center space-x-2">
+        <input id="login-email" type="email" value="alice@example.com" placeholder="Email" class="bg-slate-900 border border-slate-600 px-2 py-1 rounded w-44">
+        <input id="login-pin" type="password" inputmode="numeric" placeholder="PIN" class="bg-slate-900 border border-slate-600 px-2 py-1 rounded w-16">
+        <button class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded">Log in</button>
+      </form>
+      <span id="user-badge" class="hidden bg-slate-700 text-slate-300 px-3 py-1 rounded-full"></span>
+      <button id="logout-btn" onclick="logout()" class="hidden text-slate-400 hover:text-white">Log out</button>
     </div>
   </header>
 
@@ -516,7 +532,7 @@ def demo_web_interface():
         <div id="chat-messages" class="overflow-y-auto space-y-3 p-2 max-h-[55vh]">
           <div class="bg-slate-700/50 border border-slate-600/50 p-3 rounded-lg max-w-xl text-sm">
             <p class="font-semibold text-blue-400 mb-1">🤖 Agent:</p>
-            <p>Hello Alice! I can help you update your delivery address, check your order status, or cancel open orders before shipment. How can I help you today?</p>
+            <p>Hello! Log in at the top right (demo: alice@example.com / PIN 1234). I can help you update your delivery address, check your order status, or cancel open orders before shipment. How can I help you today?</p>
           </div>
         </div>
 
@@ -581,6 +597,41 @@ def demo_web_interface():
 
   <script>
     let activePendingRequest = null;
+    let authToken = null;  // JWT from POST /login
+
+    function authHeaders(extra = {}) {
+      return authToken ? {...extra, 'Authorization': 'Bearer ' + authToken} : extra;
+    }
+
+    async function login() {
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          email: document.getElementById('login-email').value,
+          pin: document.getElementById('login-pin').value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // 422 returns a list of validation errors, 401/429 return a string
+        alert('Login failed: ' + (typeof data.detail === 'string' ? data.detail : 'check email and PIN format'));
+        return;
+      }
+      authToken = data.access_token;
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('user-badge').innerText = '👤 ' + data.customer_name;
+      document.getElementById('user-badge').classList.remove('hidden');
+      document.getElementById('logout-btn').classList.remove('hidden');
+    }
+
+    function logout() {
+      authToken = null;
+      document.getElementById('login-pin').value = '';
+      document.getElementById('login-form').classList.remove('hidden');
+      document.getElementById('user-badge').classList.add('hidden');
+      document.getElementById('logout-btn').classList.add('hidden');
+    }
 
     function switchTab(tab) {
       document.getElementById('view-chat').classList.add('hidden');
@@ -618,10 +669,15 @@ def demo_web_interface():
       try {
         const res = await fetch('/chat', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer cust_1'},
+          headers: authHeaders({'Content-Type': 'application/json'}),
           body: JSON.stringify({message: message})
         });
         const data = await res.json();
+        if (!res.ok) {
+          const msg = typeof data.detail === 'string' ? data.detail : 'Request was rejected.';
+          container.innerHTML += `<div class="bg-rose-950/50 border border-rose-800 p-3 rounded-lg text-sm text-rose-300">${msg}</div>`;
+          return;
+        }
 
         container.innerHTML += `<div class="bg-slate-700/50 border border-slate-600/50 p-3 rounded-lg max-w-xl text-sm">
           <p class="font-semibold text-blue-400 mb-1">🤖 Agent:</p>
@@ -648,7 +704,7 @@ def demo_web_interface():
       try {
         const res = await fetch('/confirm', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer cust_1'},
+          headers: authHeaders({'Content-Type': 'application/json'}),
           body: JSON.stringify({
             request_id: activePendingRequest.request_id,
             action: action,
@@ -675,8 +731,9 @@ def demo_web_interface():
       const list = document.getElementById('orders-list');
       list.innerHTML = '<p class="text-sm text-slate-400">Loading orders...</p>';
       try {
-        const res = await fetch('/orders', {headers: {'Authorization': 'Bearer cust_1'}});
+        const res = await fetch('/orders', {headers: authHeaders()});
         const orders = await res.json();
+        if (!res.ok) { list.innerHTML = `<p class="text-sm text-rose-400">${orders.detail}</p>`; return; }
         list.innerHTML = '';
         orders.forEach(o => {
           let badgeColor = o.status === 'placed' ? 'bg-blue-900/60 text-blue-300 border-blue-700' :
@@ -706,8 +763,9 @@ def demo_web_interface():
       const list = document.getElementById('audit-list');
       list.innerHTML = '<p class="text-sm text-slate-400">Loading audit log...</p>';
       try {
-        const res = await fetch('/audit', {headers: {'Authorization': 'Bearer cust_1'}});
+        const res = await fetch('/audit', {headers: authHeaders()});
         const logs = await res.json();
+        if (!res.ok) { list.innerHTML = `<p class="text-sm text-rose-400">${logs.detail}</p>`; return; }
         list.innerHTML = '';
         if (logs.length === 0) {
           list.innerHTML = '<p class="text-sm text-slate-400">No audit records yet. Submit a change in the chat!</p>';
@@ -750,21 +808,52 @@ def get_health():
     )
 
 
+def authenticate(email: str, pin: str) -> TokenResponse:
+    """Shared by /login (JSON) and /token (OAuth2 form): checks credentials, returns a token."""
+    # Too many wrong PINs for this email: refuse before checking anything
+    if is_locked_out(email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Try again in 5 minutes."
+        )
+
+    cust = next((c for c in CUSTOMERS_DB.values() if c["email"] == email), None)
+    if not check_login(pin, cust["pin_hash"] if cust else None):
+        record_failed_login(email)
+        # Same message for wrong email and wrong PIN, so emails cannot be guessed
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or PIN",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    clear_failed_logins(email)
+    return TokenResponse(
+        access_token=create_access_token(cust["customer_id"]),
+        token_type="bearer",
+        expires_in=auth_settings.access_token_expire_minutes * 60,
+        customer_id=cust["customer_id"],
+        customer_email=cust["email"],
+        customer_name=f"{cust['first_name']} {cust['last_name'] or ''}".strip()
+    )
+
+
 @app.post("/login", response_model=TokenResponse, tags=["Authentication"])
 def login(payload: LoginRequest):
-    """Customer authentication returning Bearer token."""
-    for cid, data in CUSTOMERS_DB.items():
-        if data["email"] == payload.email and data["pin"] == payload.pin:
-            return TokenResponse(
-                access_token=f"cust_{cid}",
-                token_type="bearer",
-                customer_id=cid,
-                customer_email=data["email"]
-            )
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Incorrect email or PIN"
-    )
+    """JSON login (used by the web demo and Streamlit): email + PIN -> Bearer token."""
+    return authenticate(payload.email, payload.pin)
+
+
+@app.post("/token", response_model=TokenResponse, tags=["Authentication"])
+def token_form(form: OAuth2PasswordRequestForm = Depends()):
+    """OAuth2 password flow (used by the Authorize button in /docs): username = email, password = PIN."""
+    return authenticate(form.username.strip().lower(), form.password.strip())
+
+
+@app.get("/me", response_model=CustomerSchema, tags=["Authentication"])
+def get_me(cust: CustomerSchema = Depends(resolve_customer)):
+    """Returns the logged-in customer (useful to check a token is still valid)."""
+    return cust
 
 
 @app.get("/orders", response_model=List[OrderSchema], tags=["Orders"])
