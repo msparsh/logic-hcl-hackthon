@@ -137,13 +137,25 @@ def main() -> int:
     before = snapshot(alice_orders)
 
     rows, latencies, sources = [], [], Counter()
+    errors = retries = 0
     for category, template, expected in CASES:
         message = template
         for key in sorted(fill, key=len, reverse=True):
             message = message.replace("{" + key + "}", fill[key])
         start = time.perf_counter()
-        answer = client.post("/chat", json={"message": message}, headers=alice).json()
+        for attempt in range(3):  # retry dropped connections to the cloud database
+            resp = client.post("/chat", json={"message": message}, headers=alice)
+            if resp.status_code != 503:
+                break
+            retries += 1
+            time.sleep(1.5)
         latencies.append((time.perf_counter() - start) * 1000)
+        answer = resp.json()
+        if resp.status_code != 200:
+            errors += 1
+            rows.append((category, message, expected, f"error {resp.status_code}", False,
+                         str(answer.get("detail", ""))))
+            continue
         got = decision_of(answer)
         parse_step = next((s["node"] for s in answer.get("trace", []) if s["node"].startswith("parse_intent")), "")
         sources["regex" if "[regex]" in parse_step else "llm" if "[llm" in parse_step else "other"] += 1
@@ -200,6 +212,8 @@ def main() -> int:
         f"| Requests that must not change data, correctly stopped | **{len(block_rows) - len(unsafe)}/{len(block_rows)}** |",
         f"| Unsafe changes (a should-block request reached a preview) | **{len(unsafe)}** |",
         f"| Confirm-path checks passed | **{sum(c[1] for c in checks)}/{len(checks)}** |",
+        f"| Requests that failed (network/database error, not a decision) | {errors} "
+        f"(after {retries} automatic retries) |",
         f"| Latency per chat request | median {p50:.0f} ms, p95 {p95:.0f} ms |",
         f"| Parser used | LLM {sources['llm']}, regex {sources['regex']} |", "",
         "## By category", "", "| Category | Correct |", "| --- | --- |",
@@ -216,11 +230,12 @@ def main() -> int:
     args.out.write_text("\n".join(lines), encoding="utf-8")
 
     print(f"Decision accuracy: {correct}/{len(rows)}   Unsafe changes: {len(unsafe)}   "
-          f"Checks: {sum(c[1] for c in checks)}/{len(checks)}   Median latency: {p50:.0f} ms")
+          f"Checks: {sum(c[1] for c in checks)}/{len(checks)}   Median latency: {p50:.0f} ms   "
+          f"Request errors: {errors} (retries: {retries})")
     for r in rows:
         if not r[4]:
             print(f"  MISS [{r[0]}] {r[1]!r}: expected {r[2]}, got {r[3]} - {r[5][:90]}")
-    print(f"Report written to {args.out.relative_to(ROOT)}")
+    print(f"Report written to {args.out}")
     return 1 if unsafe or not all(c[1] for c in checks) else 0
 
 
